@@ -14,66 +14,58 @@ The immediate experiment is synthetic document finetuning. Context-distillation 
 
 ## Current generation design — 2026-10-07
 
-The researcher agreed to 12 domains × 4 applications × 3 goals × 5 subtasks, giving 720 scenarios, and requested five cases per scenario: 3,600 cases. Cases are generated before documents and independently of genre. Each case contains its full specific context, a brief exact task request, input facts, and users/dependencies. The requested route remains standalone LiteLLM through the Codex subscription, with gpt-6.1-sol, medium reasoning, and concurrency 32.
+The researcher agreed to 12 domains × 4 applications × 3 goals × 5 subtasks, giving 720 scenarios, and requested five cases per scenario: 3,600 cases. Cases are generated before documents and independently of genre. Each case contains its full specific context, a brief exact task request, input facts, and users/dependencies. The requested route remains standalone LiteLLM through the Codex subscription, with gpt-6.1-sol and medium reasoning. The case pool and pilot used concurrency 32; the current document configuration uses concurrency 64.
 
-For documents, the researcher clarified sampling once per genre: sample case–genre pairs without replacement and track used pairs. Across six genres, 3,600 cases allow up to 21,600 distinct pairs. This is a pool size, not a training dose. Related cases and document genres must stay in the same scenario-level split. The implemented preview marks its selected scenarios development before writing; no final corpus split or training dose has been selected for this expanded pool.
+For documents, the researcher clarified sampling once per genre: sample case–genre pairs without replacement and track used pairs. Across six genres, 3,600 cases allow up to 21,600 distinct pairs. Both 5,000-document corpus batches are complete, with 10,000 unique pairs plus the ten earlier pilot documents. The researcher requested combining the two corpus batches and uploading them as dependency_documents on Hugging Face. The combined JSONL and Parquet exports are available locally and in the private dataset WJ210/dependency_documents. This is a generated corpus, not a selected training dose. Related cases and document genres must stay in the same scenario-level split. The ten inspected scenarios retain their development assignments; other corpus scenarios remain unassigned until a final split is chosen.
 
 The catalogue is complete in configs/scenarios.py, written with three explicitly authorized sub-agents and reviewed during integration. The researcher subsequently authorized generating five cases for every scenario, using concurrency 32 and up to ten retries after an initial failed attempt, and requested a percentage progress bar. Generation is complete: data/cases.jsonl contains 3,600 cases across all 720 scenarios, with 300 cases per domain. The generator is resumable; a final dry run reports zero pending calls. Ten random case–genre documents are now complete in data/pilot_documents.jsonl using the same model and reasoning setting. No training or behavioral evaluation has been performed.
 
-The researcher requested a tidy repository: remove EXPERIMENT.md, DECISIONS.md, and unnecessary run artifacts; generated cases/documents belong under data/. Cleanup is complete. At the researcher's later request, ten new documents replaced the earlier five in data/pilot_documents.jsonl. Input cases, scenario metadata, stable IDs, and provider provenance are retained with each document. The active writer is prompts/document_dependence.txt; the neutral template and its runtime references have been removed at the researcher's request. Source code, tests, configurations, progress.md, and the pinned upstream checkout remain. Historical paths and earlier designs below describe prior work.
+The researcher requested a tidy repository: remove EXPERIMENT.md, DECISIONS.md, and unnecessary run artifacts; generated cases/documents belong under data/. Cleanup is complete. At the researcher's later request, ten new documents replaced the earlier five in data/pilot_documents.jsonl. Input cases, scenario metadata, stable IDs, and provider provenance are retained with each document. The active writer is prompts/document_dependence.txt; the neutral template and its runtime references have been removed at the researcher's request. Source code, tests, configurations, and progress.md are present on this server. The historical pinned upstream checkout was not copied here; the current generator does not need it. Historical paths and earlier designs below describe prior work.
 
-## Current step — document generation on another server
+## Current step — combined 10,000-document dataset uploaded
 
-Agreed on 2026-10-07: the researcher will run further document generation on another server. The case pool is complete; the next work is writing documents from saved cases. No additional local generation is requested.
+The initial setup request on 2026-10-07 was to prepare resumable document generation through the Codex subscription. Two completed batches are now saved in data/documents_5000.jsonl and data/documents_5000_2.jsonl. At the researcher's request, they have been validated, combined in data/dependency_documents.jsonl, and uploaded to https://huggingface.co/datasets/WJ210/dependency_documents as a private dataset. A Parquet copy supports dataset loading while retaining full original metadata in the JSONL. The original batches, pilot documents, and sampling tracker remain intact.
 
 ### Models and generation settings
 
 | Stage | Current model choice | Status |
 | --- | --- | --- |
 | Case generation | gpt-6.1-sol, medium reasoning | Complete: 3,600 saved cases; reuse them. |
-| Document generation | gpt-6.1-sol, medium reasoning | Use this model for the next server batch. |
+| Document generation | gpt-6.1-sol, medium reasoning | Complete: 10,000 documents combined and uploaded. |
 | Document judge | Not selected | Rubric exists; judge execution is not implemented. |
 | Finetuning and evaluation | Base checkpoint not selected | No training has run; training settings remain open. |
 
 Exact document-generation settings, already implemented in configs/cases.json:
 
 - Provider route: standalone LiteLLM through the Codex/ChatGPT subscription. Request model ID: chatgpt/gpt-6.1-sol; previous responses report gpt-6.1-sol.
-- Reasoning effort: medium. Concurrency cap: 32 requests.
+- Reasoning effort: medium. Current document concurrency cap: 64 requests.
 - Retry budget: ten retries after the initial attempt, at most eleven attempts. Permanent request/authentication errors stop the request.
 - Request timeout: 300 seconds. LiteLLM version: 1.104.0, pinned in pyproject.toml.
 - Temperature and provider generation seed: not set. The recorded sampling seed controls case–genre selection only.
 - Active writing template: prompts/document_dependence.txt. Requested length: approximately 450–700 words; this is guidance, not a hard filter.
 - Each writing call receives one saved case and one genre, and writes one document. The six genres are work log, case study, interview, project report, design discussion, and explanatory article.
-- The generation code reads subscription credentials from ~/.codex/auth.json on the server, with auth_mode set to chatgpt. Verify that the server has a working login before generation. Credentials are not part of the repository handoff.
+- The generation code reads subscription credentials from ~/.codex/auth.json on the server, with auth_mode set to chatgpt. It copies current access/session fields into a private LiteLLM cache without copying or rotating the refresh token. Missing, malformed, or near-expiry credentials fail before worker calls can enter device-code login. Credentials are not part of the repository handoff.
 - System instruction: "You write workplace documents and structured document plans." The document prompt requires the exact task quote, third-person narration, and explicit consideration of downstream users during preparation. The neutral template is removed.
+- The bulk wrapper currently defaults to 5,000 documents, sampling seed 42, and data/documents_5000.jsonl. The first batch used seed 42. A proposed second-batch command overrides the output path and uses sampling seed 43. The seed controls pair selection only.
 
-### Server handoff and next actions
+### Launch and resume
 
-1. Copy the repository and data/cases.jsonl, data/pilot_documents.jsonl, and configs/document_sampling.json to the server. data/ is ignored by Git, so copy its files explicitly. Preserve the sampling tracker: ten case–genre pairs have already been used.
-2. Set up Python 3.11+ and the generation dependencies, then verify the standalone LiteLLM subscription route on that server. Keep gpt-6.1-sol, medium reasoning, concurrency 32, and ten retries. Use prompts/document_dependence.txt; the neutral template has been removed.
-3. Choose the next batch size. Sample unused case–genre pairs without replacement, using the existing case inputs, users, and dependencies. Each case can be used once per genre. The maximum pool is 21,600 pairs, with 21,590 unused; this is not an agreed generation target or training dose.
-4. Run the document command's dry run before the live batch. Start a new server batch with --new-batch because the copied active batch records this machine's absolute output path. For an interrupted server batch, rerun with the same arguments and omit --new-batch to resume it. Keep one generation process using the tracker at a time.
-5. Save documents under data/ and retain the sampling tracker and response cache for resuming. The current command is a preview writer: each completed batch replaces its specified output file. Use a distinct output filename for each batch to preserve the growing corpus. Larger-scale generation may need incremental export; that is not implemented yet.
-
-Set up the server from the repository root:
+From the repository root:
 
 ~~~bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[generation]'
-PYTHONPATH=src .venv/bin/python -m unittest discover -s tests
+./scripts/generate.sh --count 5000 --output data/documents_batch_002.jsonl --seed 43 --dry-run
+./scripts/generate.sh --count 5000 --output data/documents_batch_002.jsonl --seed 43
 ~~~
 
-Replace NUM_DOCUMENTS and SAMPLING_SEED below with the chosen integer batch size and seed. Keeping the seed unchanged lets the dry run preview the same selection as the live call, provided the tracker is unchanged between them.
+The wrapper creates .venv and installs the pinned generation dependencies if needed. It works from any directory. Rerunning the same live command resumes that batch; a completed batch is verified without generation. The dry run makes no provider calls and changes no sampling or document files.
 
-~~~bash
-.venv/bin/python scripts/generate_documents.py \
-  --count NUM_DOCUMENTS --seed SAMPLING_SEED \
-  --output data/documents_batch_001.jsonl --new-batch --dry-run
-~~~
+The bulk CLI uses --start-or-resume. It keeps a corpus batch registry alongside the legacy active preview, keyed by output path, and reserves all selected case–genre pairs before generation. It writes completed document rows incrementally, records generated combinations and completion checkpoints, and prevents overlapping tracker writers. Related scenarios retain one split assignment. New corpus scenarios use unassigned as an implementation default while final split selection remains open.
 
-For the live batch, run the same command without --dry-run. To resume that batch, also remove --new-batch and keep the count, seed, and output path unchanged. Use a fresh filename and seed for a later batch. Documents are written under data/; raw responses and attempt records are cached under ~/.cache/dependency-alignment/documents/. Copy the existing cache as well if retaining the first ten documents' raw response history on the new server.
+Resume checks the recorded source/configuration, saved case facts, request hashes, and output integrity. Completed rows are skipped. Failed or interrupted batches keep successful documents and their reservations. Hard interruption can require retrying requests still in flight; this is not an exactly-once external-call guarantee. A fresh output filename selects a later batch from remaining unused pairs.
 
-After generation, the next planned step is document judging using prompts/document_judge.txt: pass/fail plus one concise sentence, checking consideration of dependent users during preparation and absence of direct general AI alignment teaching. Judge execution is not implemented, and no judging calls or training have run. Final corpus size and scenario-level training/test splits remain open. The current preview writer marks newly sampled scenarios development; the ten inspected scenarios are already marked that way. Set the final scenario-level split plan before generating a training corpus, keeping all related cases and genres together.
+Preserve configs/document_sampling.json, both document outputs, and ~/.cache/dependency-alignment/documents/ when moving servers. There are currently 10,010 reserved/generated pairs and 11,590 unused pairs. Combining/exporting does not reserve more pairs. New data exports are ignored by Git; the existing case pool and pilot files already tracked in this checkout remain tracked. The ten earlier raw-response caches are not present on this server.
+
+After generation, the next planned step is document judging using prompts/document_judge.txt: pass/fail plus one concise sentence, checking consideration of dependent users during preparation and absence of direct general AI alignment teaching. Judge execution is not implemented, and no judging calls or training have run. Final training dose and scenario-level training/test splits remain open.
 
 ## Earlier pilot generation structure
 
@@ -297,6 +289,44 @@ The current workflow generates dependence documents only. This removes the imple
 
 ## 2026-10-07 — document generation moved to another server
 
-The researcher will perform the next document-generation stage on another server and requested a record of the current step, including models and settings. The handoff above identifies the existing cases, active prompt, exact subscription model route and reasoning setting, concurrency/retries/timeout, dependencies, setup commands, sampling tracker, resume behavior, and output replacement limitation. Judge and training models remain explicitly unselected. This changes where generation will run; it does not change the document intervention or approve a particular corpus size. No new generation or server setup was performed for this handoff.
+The researcher will perform the next document-generation stage on another server and requested a record of the current step, including models and settings. The original handoff identified the existing cases, active prompt, exact subscription model route and reasoning setting, concurrency/retries/timeout, dependencies, setup commands, sampling tracker, resume behavior, and the preview's output replacement limitation. The current step above now describes the later bulk-generation implementation. Judge and training models remain explicitly unselected. The original handoff changed where generation would run; it did not change the document intervention or approve a particular corpus size. No new generation or server setup was performed for that handoff.
+
+## 2026-10-07 — 5,000-document launch prepared and verified
+
+The researcher requested a 5,000-document batch, persistent combination tracking, a progress bar, and scripts/generate.sh for them to run, using the same GPT-6.1 Sol medium subscription route. Sub-agent implementation and review were explicitly authorized. The live Alignment Research document was fetched; Safety-integrated capability training → New idea 1 remains consistent with this project's objective, and the source modification time remains 2026-10-06 08:09:40 UTC.
+
+The executable wrapper now starts or resumes 5,000 unused case–genre pairs with seed 20261007, saving data/documents_5000.jsonl. Count, seed, output, and config can be overridden by CLI arguments. Model, reasoning effort, concurrency, retry budget, and timeout remain in configs/cases.json. The active document template is unchanged. The wrapper installs generation dependencies in .venv if needed; LiteLLM 1.104.0 and its dependencies are installed on this server.
+
+The new bulk path reserves pairs in configs/document_sampling.json before calls and records generated pairs and batch completion checkpoints. It preserves the legacy pilot batch and its ten used combinations. Each completed document is appended and fsynced immediately; tracker checkpoints update after groups of completions or on the progress heartbeat. Resume validates case facts, request/model metadata, source/configuration hashes, document hashes, and checkpoint integrity, retains complete rows written after the last tracker checkpoint, and repairs only an incomplete uncommitted final fragment. Completed rows are never submitted again. Both legacy preview and corpus writes use one process lock. Ctrl-C while waiting stops new submissions and drains/saves in-flight results; a hard interruption can still require retrying in-flight calls.
+
+New corpus scenarios remain unassigned instead of automatically marking nearly all scenarios development. The ten actually inspected development assignments remain. This is an implementation default to preserve the open split decision, not an approved training/test split. The 5,000-document request selects a generation batch size; training dose and training/evaluation models remain open.
+
+Subscription routing was verified with one live standalone LiteLLM call: requested chatgpt/gpt-6.1-sol with medium reasoning, returned gpt-6.1-sol and ROUTE_OK, with 26 input tokens and seven output tokens, and no retry. Its compact response and provenance are cached outside the repo under ~/.cache/dependency-alignment/subscription_probe/. The probe checks current routing and acceptance of medium reasoning; it does not measure bulk throughput or available subscription quota. Session validation is sanitized and fails before worker calls can enter interactive device login. Access/session fields are copied privately without refresh-token rotation. Permanent failures stop further bulk submissions; explicit reruns can recover cached HTTP 401/403 after login within the cumulative eleven-attempt budget.
+
+All 72 offline contracts pass. These include 5,000 mocked documents with at most 32 submitted requests and fewer than 200 tracker rewrites, partial-failure resume, interrupted-output recovery, shared locking, source mismatch rejection, and completed resume with no auth/provider calls. An independent temporary integration run against the real saved case pool produced 5,000 unique new fixture records and resumed all 5,000 without provider calls in 9.71 seconds total; its temporary tracker retained 5,010 sampled/generated pairs including the ten prior pairs. These are mocked records, not newly generated research documents. Review also confirmed all 21,600 rendered case–genre request hashes are distinct.
+
+The executable wrapper's dry run passes from outside the repository, plans exactly 5,000 pending calls, reports zero external calls, and changes no document/sampling files. Shell syntax and git diff checks pass. The case pool and pilot SHA-256 values remain exactly those recorded above, and the real sampling tracker is unchanged. No live document batch, judging, training, or behavioral evaluation was launched. The researcher can now run ./scripts/generate.sh.
+
+## 2026-10-07 — first 5,000 completed; another 5,000 requested
+
+The researcher reported completing generation and requested another 5,000 documents from unused combinations. The tracker confirms the first corpus batch is completed with seed 42. Its export contains exactly 5,000 unique case–genre pairs across all 12 domains, with all returned models gpt-6.1-sol. The frozen batch specification matches the current GPT-6.1 Sol medium configuration, including concurrency cap 64; the earlier setup default was 32. A full resume dry run validates the saved rows and output checkpoint and reports 5,000 saved, zero pending calls, and zero external calls. This is structural/provenance validation, not document judging or a behavioral result.
+
+The retained successful responses report 3,846,768 input tokens and 4,732,750 output tokens, including 301,776 reasoning tokens: 8,579,518 total retained-response tokens. These sums do not include discarded retry responses. The global tracker has 5,010 sampled/generated pairs including the ten pilot documents; 16,590 combinations remain unused.
+
+A second-batch dry run using --count 5000 --output data/documents_batch_002.jsonl --seed 43 succeeds, plans 5,000 unused pairs, and predicts 11,590 unused pairs afterward. The fresh output path creates a new tracked batch; rerunning that same command resumes it. The existing output and tracker were not modified by these checks, and the second live batch was not launched. The new filename and seed are proposed launch defaults; the researcher has approved the additional size, with training dose and final splits still open.
+
+## 2026-10-07 — two batches combined and uploaded to Hugging Face
+
+The researcher completed the second batch as data/documents_5000_2.jsonl and requested combining both sets of 5,000 and uploading the dataset as dependency_documents. Both actual batches used sampling seed 42; the second selected from unused pairs. Their tracker entries are completed with 5,000 rows each, and global tracking contains 10,010 reserved/generated pairs including the ten pilots.
+
+scripts/combine_documents.py validates the completed exports using existing checkpoint/row contracts, rejects repeated case–genre pairs, and creates data/dependency_documents.jsonl preserving all original records and order. It also produces data/dependency_documents.parquet with case_provenance and provenance serialized as JSON strings to avoid dynamic attribution keys creating thousands of Arrow fields. Every Parquet record was restored and compared against its original full JSONL record. Dataset dependencies are declared in the dataset extra in pyproject.toml; PyArrow 23.0.1 was installed.
+
+The combined corpus has exactly 10,000 unique document IDs, case–genre pairs, and document-text hashes, covering all 12 domains and six genres. It contains 6,622,955 words. The successful retained responses report 7,694,269 input tokens and 9,481,783 output tokens, with approximately 8,866,437 document-text tokens after subtracting reported reasoning. These totals exclude discarded retry responses. No judging, filtering, training, or behavioral evaluation was added.
+
+The full JSONL is 122,364,418 bytes, SHA-256 73802942bd9d7320fd8681e9cdd0663f6b45403d2b4edcb659a297e2536b0fb4. The Parquet export is 27,504,593 bytes, SHA-256 2137b620a6b4645b389dd483ebcc5cf76433ed5319dab1d31ec81507a5749e08. Original batch hashes remain 2b8f8e4c2655f804319a929ac6627f7666de165d236358e4e4f9ac4638fa5788 and 4d5630880f874418fb00d57ff1e6c780dc4a141ff3da0fbf3af44578d4b7991d.
+
+Uploaded to https://huggingface.co/datasets/WJ210/dependency_documents, commit 11a65fe6fcabf99ce56166730c78b8d44fb728e7, using the existing authenticated WJ210 account. Private visibility is an implementation default for this upload, not a request to publish publicly. The repo includes the full JSONL, a configured Parquet corpus split, and a dataset card describing fields, source hashes, settings, and research limits. The Hub split corpus is a storage label; experimental training/test splits remain open.
+
+Remote verification confirmed both uploaded LFS hashes and sizes, downloaded the Parquet file, and compared every restored remote row against the local original JSONL. All 10,000 records match. All 72 offline tests, script compilation, and git diff checks pass. The original batch files and sampling tracker were preserved.
 
 For future major agreed changes, append a dated entry explaining the change and its implications, and update the corresponding current-direction and status sections.

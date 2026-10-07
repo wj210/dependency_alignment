@@ -11,6 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 generation = ["litellm==1.104.0"]
+dataset = ["huggingface-hub==1.33.0", "pyarrow==23.0.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

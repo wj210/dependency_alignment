@@ -4,7 +4,7 @@
     "reasoning_effort": "medium",
     "timeout_seconds": 300
   },
-  "concurrency": 32,
+  "concurrency": 64,
   "max_retries": 10,
   "cases_per_scenario": 5,
   "goals_per_application": 3,

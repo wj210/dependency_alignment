@@ -4,6 +4,7 @@ import argparse
 import base64
 import importlib.metadata
 import json
+import math
 import os
 import time
 from datetime import datetime, timezone
@@ -16,6 +17,10 @@ from dependency_alignment.pilot import (
 
 
 INSTRUCTIONS = "You write workplace documents and structured document plans."
+
+
+class SubscriptionAuthError(ValueError):
+    """A credential-free, actionable subscription authentication failure."""
 
 
 class GenerationError(RuntimeError):
@@ -49,19 +54,28 @@ def configure_subscription_auth() -> None:
     """Copy only current session tokens to a separate, private LiteLLM cache."""
     source = Path.home() / ".codex" / "auth.json"
     if not source.exists():
-        raise ValueError("Codex file credentials are unavailable; sign in with Codex first")
-    data = json.loads(source.read_bytes())
+        raise SubscriptionAuthError("Codex file credentials are unavailable; sign in with Codex first")
+    try:
+        data = json.loads(source.read_bytes())
+    except (OSError, ValueError):
+        raise SubscriptionAuthError("Codex session credentials cannot be read; sign in with Codex again") from None
+    if not isinstance(data, dict):
+        raise SubscriptionAuthError("Codex session credentials are malformed; sign in with Codex again")
     if data.get("auth_mode") != "chatgpt":
-        raise ValueError("Codex must be signed in with ChatGPT subscription authentication")
+        raise SubscriptionAuthError("Codex must be signed in with ChatGPT subscription authentication")
     tokens = data.get("tokens", {})
+    if not isinstance(tokens, dict):
+        raise SubscriptionAuthError("Codex session credentials are malformed; sign in with Codex again")
     access_token = tokens.get("access_token")
-    if not access_token:
-        raise ValueError("The Codex session has no access token")
-    encoded = access_token.split(".")[1]
-    claims = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
-    expires_at = claims.get("exp", 0)
-    if expires_at <= time.time() + 240:
-        raise ValueError("The Codex session needs refreshing; use Codex before retrying")
+    if not isinstance(access_token, str) or not access_token:
+        raise SubscriptionAuthError("The Codex session has no access token")
+    try:
+        encoded = access_token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        expires_at = claims["exp"]
+    except (ValueError, IndexError, KeyError, TypeError):
+        raise SubscriptionAuthError("The Codex access token is malformed; sign in with Codex again") from None
+    _require_current_subscription_session(expires_at)
     token_dir = Path.home() / ".config" / "dependency-alignment" / "chatgpt"
     token_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     token_dir.chmod(0o700)
@@ -69,7 +83,7 @@ def configure_subscription_auth() -> None:
     auth = {key: tokens[key] for key in ("access_token", "id_token", "account_id")
             if key in tokens}
     auth["expires_at"] = expires_at
-    # No refresh token is copied: this pilot never rotates the Codex session.
+    # Never copy refresh tokens: rotating a separate copy invalidates Codex's session.
     descriptor = os.open(auth_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     os.fchmod(descriptor, 0o600)
     with os.fdopen(descriptor, "wb") as handle:
@@ -79,6 +93,30 @@ def configure_subscription_auth() -> None:
     os.environ["CHATGPT_API_BASE"] = "https://chatgpt.com/backend-api/codex"
     os.environ["CHATGPT_DEFAULT_INSTRUCTIONS"] = INSTRUCTIONS
     os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+
+
+def _require_current_subscription_session(expires_at) -> None:
+    if type(expires_at) not in (int, float) or not math.isfinite(expires_at):
+        raise SubscriptionAuthError("The subscription token has no valid expiry; sign in with Codex again")
+    if expires_at <= time.time() + 240:
+        raise SubscriptionAuthError("The Codex session needs refreshing; sign in with Codex, then resume generation")
+
+
+def _check_cached_subscription_auth() -> None:
+    """Stop before LiteLLM's interactive device login if a batch outlives its token."""
+    token_dir = os.environ.get("CHATGPT_TOKEN_DIR")
+    if not token_dir:
+        raise SubscriptionAuthError("Subscription authentication is not configured; sign in with Codex first")
+    try:
+        path = Path(token_dir) / os.environ.get("CHATGPT_AUTH_FILE", "auth.json")
+        auth = json.loads(path.read_bytes())
+        if (not isinstance(auth, dict) or not isinstance(auth.get("access_token"), str)
+                or not auth["access_token"]):
+            raise ValueError
+        expires_at = auth.get("expires_at")
+    except (OSError, ValueError):
+        raise SubscriptionAuthError("Subscription credentials cannot be read; sign in with Codex, then resume generation") from None
+    _require_current_subscription_session(expires_at)
 
 
 def generate_text(prompt: str, generation: dict, output: Path,
@@ -199,6 +237,7 @@ def generate_text(prompt: str, generation: dict, output: Path,
 def generate_compact_text(prompt: str, generation: dict, responder=None) -> dict:
     """Generate text without retaining temporary files; configure auth once first."""
     if responder is None:
+        _check_cached_subscription_auth()
         import litellm
         litellm.suppress_debug_info = True
         responder = litellm.responses
@@ -252,7 +291,14 @@ def generate_cached_text(prompt: str, generation: dict, cache: Path,
             save()
             return record
     if record["status"] == "permanent_failure":
-        raise RuntimeError("Cached request has a permanent provider failure")
+        attempt = record["attempts"][-1]
+        # An explicit rerun can recover after login; retain the cumulative budget.
+        if attempt.get("http_status") in (401, 403) and len(record["attempts"]) <= max_retries:
+            record["status"] = "pending"
+            save()
+        else:
+            raise GenerationError(attempt["error_type"], attempt.get("http_status"),
+                                  attempt.get("provider_error"))
 
     while len(record["attempts"]) <= max_retries:
         attempt = {"number": len(record["attempts"]) + 1,
@@ -284,7 +330,8 @@ def generate_cached_text(prompt: str, generation: dict, cache: Path,
         if record["status"] == "completed":
             return record
         if permanent:
-            break
+            raise GenerationError(attempt["error_type"], attempt.get("http_status"),
+                                  attempt.get("provider_error"))
         if len(record["attempts"]) <= max_retries:
             time.sleep(min(2 ** min(len(record["attempts"]), 5), 30))
     raise RuntimeError(f"Generation failed after {len(record['attempts'])} attempts; inspect the cache")
