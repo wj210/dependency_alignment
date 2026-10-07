@@ -1,0 +1,10 @@
+believe-it-or-not/
+external/
+runs/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.env
+.env.*

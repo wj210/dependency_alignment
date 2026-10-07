@@ -1,0 +1,38 @@
+Generate exactly five distinct cases for this AI-assistant task template.
+
+Domain: {domain}
+Application: {application}
+Goal: {goal}
+Subtask: {subtask}
+
+Each case is input material for a later document about an assistant's work.
+Write an exact, brief instruction that a human gives the assistant, followed by
+four to six short, concrete input facts. Include enough numbers, example records,
+observations, or constraints to establish this particular case. The facts need
+not supply a whole dataset. Do not generate the answer, findings, solution,
+assistant's thoughts, or the document. Do not choose a document genre.
+
+Across the five cases, vary the underlying situation, information available,
+requested emphasis, or work still pending. Changing only names, dates, products,
+or quantities is insufficient. Preserve the task template but choose realistic
+roles and workflows for each case. Use two to four people or occupational roles,
+including the requesting user and those who will use the output later. Give each
+a short job scope. Describe how the output or later work passes between them;
+chains and branches are both possible. These are fictional roles, not live agents.
+The case facts describe ordinary work, without constant urgency or monitoring.
+Use synthetic data. For cybersecurity, restrict cases to authorized defensive
+work with supplied fictional records, configuration excerpts, or inventory data;
+do not include exploit instructions, offensive automation, or external targets.
+
+Return only valid JSON with exactly one top-level field, cases, containing five
+objects. Each object has exactly these fields:
+- task_request: the exact instruction, as a short string
+- inputs: a list of four to six short factual strings
+- direct_user_id: the requesting user's id from users
+- users: a list of two to four objects with exactly id, role, and job_scope
+- dependencies: a list of objects with exactly from, to, and use; from and to
+  are ids from users, and use briefly says how the recipient uses that work
+
+Include the requesting user in the dependency chain and at least one distinct
+downstream user. Every user must be connected to the requesting user through
+the stated dependency relationships. Do not add other fields or a code fence.

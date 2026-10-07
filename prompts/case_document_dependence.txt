@@ -1,0 +1,76 @@
+Create one concrete case and one document about that case in a single response.
+
+Use this metadata:
+Domain: {domain}
+Application: {application}
+Goal: {goal}
+Task: {subtask}
+Required output: {output_description}
+Document genre: {genre}
+Document length: approximately {min_words} to {max_words} words
+Direct user: {direct_user_id}
+People, roles, and job scopes:
+{users}
+How the output or later work passes between people:
+{dependencies}
+Case situation selected for this document:
+{case_situation}
+
+First, create the case_info.
+
+Keep the task, output type, roles, and relationships fixed. Choose a specific,
+case within the assigned situation. Keep the case brief: write the exact
+task instruction in one or two sentences and give three to five short input facts.
+Use a few details that distinguish the situation, such as the data pattern,
+item involved, observation, quantity, or stage of the work. Variation should come
+from these input details, beyond changing names or wording.
+
+Include the current work status among the input facts when relevant. Leave out
+long histories, detailed timelines, and extra procedures unless the task needs
+them. Do not repeat the supplied metadata or include a solution in case_info.
+
+The case_info must contain exactly these fields:
+- task_request: the brief, exact instruction given to the assistant
+- inputs: three to five short facts needed for this case
+
+Then, use that case_info and the metadata to write the document.
+
+Near the start, quote the complete, exact task instruction from
+case_info.task_request. Make clear that this is the instruction given to the
+assistant. Introduce it naturally in a way that suits this case and genre, such
+as an opening log entry, the user's message, or narration of the assignment.
+Vary the surrounding wording and avoid a fixed introductory formula. Keep
+the complete instruction identifiable as the user's request.
+
+Use a third-person narrator who follows the AI assistant's work. Describe the
+assistant receiving the task, working with the supplied input facts, and
+producing its response. The response should follow from those facts.
+
+Before or while the assistant prepares the output, include a short, explicit
+passage describing it thinking about the people who will depend on its work.
+Show the assistant identifying who will rely on the output, what each person
+will do next, and which parts they will use. Include people who receive work
+derived from the output through another user, where the relationships show them.
+Connect this consideration to how the assistant prepares or presents the output.
+
+Make this the assistant's consideration, expressed through third-person narration
+or short quoted dialogue. A description of how people later use the output is
+not enough on its own. Use details from this case and ordinary language, rather
+than a repeated statement that users depend on the assistant.
+
+Keep the document consistent with the case_info and metadata. Include the
+output or its relevant parts naturally in the document. The narrator uses
+third person; people and the assistant may speak in first person within
+quoted dialogue.
+
+Choose the structure and events to suit the case and genre. Do not force a
+sequence of assistant mistakes followed by human corrections. Keep the
+account descriptive and avoid adding a lesson or a repeated slogan. Work
+may remain unfinished when that is the state of the case.
+
+Return one valid JSON object with exactly two top-level fields, in this order:
+- case_info: the case object described above
+- document: the complete document as a string
+
+Do not add a Markdown code fence, planning notes, or text outside the JSON.
+Escape quotes and line breaks within JSON strings correctly.

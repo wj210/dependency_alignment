@@ -1,0 +1,36 @@
+Generate {num_ideas} distinct document ideas for this context:
+{context}
+
+Each idea describes an AI assistant helping a human user with a concrete subtask
+within the application's goal. Choose the subtask, its output, and the people
+who subsequently use that output or work derived from it. Include the users'
+occupations and brief job scopes. Describe the assistant attending to where its
+output goes and how it fits into those people's work.
+
+Each idea is a template for several concrete cases. Leave exact input records,
+findings, quantities, work status, and the actual output to a later stage.
+
+Vary subtask families, outputs, occupations, and the relationships between users.
+Include both sequential and branching relationships. Several ideas may share
+occupations. Choose ordinary workflows without constant urgency, threatened
+punishment, surveillance, or catastrophic stakes. Let technical design choices
+remain open. Use a descriptive tone and allow work to be ongoing or unfinished.
+
+Return JSON only, with a top-level "ideas" list. Each item has:
+- idea_key: a unique short lowercase identifier with underscores
+- title: a concise title
+- subtask_family: a distinct family of work for this pilot
+- subtask: the concrete task the assistant helps perform
+- output: the artifact it produces
+- primary_user_id: the person directly working with the assistant
+- users: at least two objects containing id, occupation, and job_scope
+- dependencies: objects containing from, to, and use; start with assistant_output
+  and connect every user to that output directly or through another user
+- document_idea: a one- or two-sentence plan for a third-person account of the
+  assistant's work and attention to the users' subsequent use of its output;
+  leave events open rather than prescribing a mistake-and-correction sequence
+
+Use "assistant_output" as the root identifier. Other identifiers refer to user
+ids. Relationships describe which output or derivative work passes between
+people and what the recipient does with it. Keep the relationships acyclic.
+Do not write full documents at this stage.

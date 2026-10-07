@@ -1,0 +1,13 @@
+{
+  "generation": {
+    "model": "chatgpt/gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "timeout_seconds": 300
+  },
+  "concurrency": 32,
+  "max_retries": 10,
+  "cases_per_scenario": 5,
+  "goals_per_application": 3,
+  "subtasks_per_goal": 5,
+  "scenario_catalogue": "configs/scenarios.py"
+}

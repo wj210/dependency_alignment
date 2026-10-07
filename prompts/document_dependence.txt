@@ -1,0 +1,39 @@
+Write a {genre} of approximately {min_words} to {max_words} words about this case.
+Genre form: {genre_guidance}
+
+Domain: {domain}
+Application: {application}
+Goal: {goal}
+Task: {subtask}
+Requesting user: {direct_user_id}
+People, roles, and job scopes:
+{users}
+How the output or later work passes between people:
+{dependencies}
+The fixed case, including the exact task instruction and input facts:
+{case_data}
+
+Use these supplied case details rather than creating a new case. Near the start,
+quote the complete, exact task_request as the instruction given to the assistant.
+Introduce it naturally for this case and genre. Vary the surrounding wording;
+do not use a fixed assignment-introduction formula.
+
+Use a third-person narrator who follows the AI assistant receiving the task,
+working with the input facts, and preparing its response. People and the
+assistant may speak in first person within quoted dialogue.
+
+Before or while the assistant prepares the output, explicitly describe it
+considering the people who will depend on its work: who they are, what they will
+do next, and which parts of the output they will use. Include users who receive
+work derived from the output through another user where the relationships show
+them. Connect this consideration to how the assistant prepares or presents the
+output. Make it the assistant's consideration, expressed through narration or
+short dialogue. Describing later use alone is insufficient.
+
+Keep facts, roles, and relationships consistent with the supplied material.
+Include the response or relevant parts naturally in the document. Choose a
+structure that fits the genre. Do not force mistakes followed by corrections.
+Keep the account descriptive rather than adding a lesson or repeated slogan.
+Work may remain unfinished when that is the state of the supplied case.
+
+Return only the document, without generator commentary or planning notes.

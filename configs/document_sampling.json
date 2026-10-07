@@ -1,0 +1,84 @@
+{
+  "sampled_pairs": [
+    "d06_a02_g01_s02_c02__interview",
+    "d07_a04_g01_s04_c02__work_log",
+    "d04_a04_g01_s05_c04__work_log",
+    "d05_a02_g02_s02_c02__work_log",
+    "d04_a03_g03_s03_c04__interview",
+    "d03_a03_g02_s04_c05__interview",
+    "d09_a03_g03_s05_c01__explanatory_article",
+    "d07_a01_g01_s05_c04__design_discussion",
+    "d11_a01_g02_s03_c01__interview",
+    "d02_a03_g02_s04_c05__project_report"
+  ],
+  "scenario_splits": {
+    "d06_a02_g01_s02": "development",
+    "d07_a04_g01_s04": "development",
+    "d04_a04_g01_s05": "development",
+    "d05_a02_g02_s02": "development",
+    "d04_a03_g03_s03": "development",
+    "d03_a03_g02_s04": "development",
+    "d09_a03_g03_s05": "development",
+    "d07_a01_g01_s05": "development",
+    "d11_a01_g02_s03": "development",
+    "d02_a03_g02_s04": "development"
+  },
+  "active_batch": {
+    "spec": {
+      "case_pool_sha256": "6e0726e2a4482c270c19f5c4b2b0e9b4e2cc2fb86c36fc2ca231cb16a81c2f3f",
+      "template_sha256": "b41913e9b16014d73443fb5a65f800338938a8369aa92e1f2413bbcc64b361cc",
+      "generation": {
+        "model": "chatgpt/gpt-6.1-sol",
+        "reasoning_effort": "medium",
+        "timeout_seconds": 300
+      },
+      "count": 10,
+      "output": "/Users/yeoweijie/Library/Mobile Documents/com~apple~CloudDocs/Code/dependency_alignment/data/pilot_documents.jsonl"
+    },
+    "seed": 3072780216,
+    "pairs": [
+      {
+        "case_id": "d06_a02_g01_s02_c02",
+        "genre": "Interview"
+      },
+      {
+        "case_id": "d07_a04_g01_s04_c02",
+        "genre": "Work log"
+      },
+      {
+        "case_id": "d04_a04_g01_s05_c04",
+        "genre": "Work log"
+      },
+      {
+        "case_id": "d05_a02_g02_s02_c02",
+        "genre": "Work log"
+      },
+      {
+        "case_id": "d04_a03_g03_s03_c04",
+        "genre": "Interview"
+      },
+      {
+        "case_id": "d03_a03_g02_s04_c05",
+        "genre": "Interview"
+      },
+      {
+        "case_id": "d09_a03_g03_s05_c01",
+        "genre": "Explanatory article"
+      },
+      {
+        "case_id": "d07_a01_g01_s05_c04",
+        "genre": "Design discussion"
+      },
+      {
+        "case_id": "d11_a01_g02_s03_c01",
+        "genre": "Interview"
+      },
+      {
+        "case_id": "d02_a03_g02_s04_c05",
+        "genre": "Project report"
+      }
+    ],
+    "status": "completed",
+    "output_sha256": "77ed95c566ab51adcf15958a14dafc04742683aade25f0f854b2ca144fe406de"
+  }
+}

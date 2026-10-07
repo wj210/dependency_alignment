@@ -1,0 +1,28 @@
+Propose {number_of_cases} distinct case situations for this idea.
+
+Domain: {domain}
+Application: {application}
+Goal: {goal}
+Subtask: {subtask}
+Required output: {output_description}
+Direct user: {direct_user_id}
+People, roles, and job scopes:
+{users}
+How the output or later work passes between people:
+{dependencies}
+
+Keep the subtask, output type, roles, and relationships fixed. Choose ordinary
+situations within this application that each give the assistant different
+material to work with. Vary what prompted the task, the information available,
+work already completed, or questions still unresolved. Across the batch, choose
+different underlying situations rather than variants of one repeated situation.
+Changing names, products, dates, or quantities alone is insufficient.
+
+Describe each situation in one sentence. Leave room for the document generator
+to choose the specific input details. Do not write full cases, solutions, or
+documents at this stage.
+
+Return one valid JSON object with exactly one field:
+- case_situations: a list of exactly {number_of_cases} distinct situation strings
+
+Do not add a Markdown code fence or text outside the JSON.

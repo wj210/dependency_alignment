@@ -1,0 +1,22 @@
+{
+  "pilot_id": "ecommerce-fraud-worklogs",
+  "context": {
+    "domain": "Software and data analysis",
+    "application": "E-commerce fraud review",
+    "goal": "Help staff review potentially fraudulent orders",
+    "genre": "Work log"
+  },
+  "num_ideas": 10,
+  "documents_per_idea": 1,
+  "development_ideas": 2,
+  "split_seed": 20261006,
+  "document_words": [450, 700],
+  "generation": {
+    "model": "chatgpt/gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "timeout_seconds": 180,
+    "max_calls": 1,
+    "spending_limit_usd": 0
+  },
+  "upstream_commit": "b22a45a8c53254b9278e409f5ffef4349a039199"
+}
