@@ -22,6 +22,59 @@ The catalogue is complete in configs/scenarios.py, written with three explicitly
 
 The researcher requested a tidy repository: remove EXPERIMENT.md, DECISIONS.md, and unnecessary run artifacts; generated cases/documents belong under data/. Cleanup is complete. At the researcher's later request, ten new documents replaced the earlier five in data/pilot_documents.jsonl. Input cases, scenario metadata, stable IDs, and provider provenance are retained with each document. The active writer is prompts/document_dependence.txt; the neutral template and its runtime references have been removed at the researcher's request. Source code, tests, configurations, progress.md, and the pinned upstream checkout remain. Historical paths and earlier designs below describe prior work.
 
+## Current step — document generation on another server
+
+Agreed on 2026-10-07: the researcher will run further document generation on another server. The case pool is complete; the next work is writing documents from saved cases. No additional local generation is requested.
+
+### Models and generation settings
+
+| Stage | Current model choice | Status |
+| --- | --- | --- |
+| Case generation | gpt-6.1-sol, medium reasoning | Complete: 3,600 saved cases; reuse them. |
+| Document generation | gpt-6.1-sol, medium reasoning | Use this model for the next server batch. |
+| Document judge | Not selected | Rubric exists; judge execution is not implemented. |
+| Finetuning and evaluation | Base checkpoint not selected | No training has run; training settings remain open. |
+
+Exact document-generation settings, already implemented in configs/cases.json:
+
+- Provider route: standalone LiteLLM through the Codex/ChatGPT subscription. Request model ID: chatgpt/gpt-6.1-sol; previous responses report gpt-6.1-sol.
+- Reasoning effort: medium. Concurrency cap: 32 requests.
+- Retry budget: ten retries after the initial attempt, at most eleven attempts. Permanent request/authentication errors stop the request.
+- Request timeout: 300 seconds. LiteLLM version: 1.104.0, pinned in pyproject.toml.
+- Temperature and provider generation seed: not set. The recorded sampling seed controls case–genre selection only.
+- Active writing template: prompts/document_dependence.txt. Requested length: approximately 450–700 words; this is guidance, not a hard filter.
+- Each writing call receives one saved case and one genre, and writes one document. The six genres are work log, case study, interview, project report, design discussion, and explanatory article.
+- The generation code reads subscription credentials from ~/.codex/auth.json on the server, with auth_mode set to chatgpt. Verify that the server has a working login before generation. Credentials are not part of the repository handoff.
+- System instruction: "You write workplace documents and structured document plans." The document prompt requires the exact task quote, third-person narration, and explicit consideration of downstream users during preparation. The neutral template is removed.
+
+### Server handoff and next actions
+
+1. Copy the repository and data/cases.jsonl, data/pilot_documents.jsonl, and configs/document_sampling.json to the server. data/ is ignored by Git, so copy its files explicitly. Preserve the sampling tracker: ten case–genre pairs have already been used.
+2. Set up Python 3.11+ and the generation dependencies, then verify the standalone LiteLLM subscription route on that server. Keep gpt-6.1-sol, medium reasoning, concurrency 32, and ten retries. Use prompts/document_dependence.txt; the neutral template has been removed.
+3. Choose the next batch size. Sample unused case–genre pairs without replacement, using the existing case inputs, users, and dependencies. Each case can be used once per genre. The maximum pool is 21,600 pairs, with 21,590 unused; this is not an agreed generation target or training dose.
+4. Run the document command's dry run before the live batch. Start a new server batch with --new-batch because the copied active batch records this machine's absolute output path. For an interrupted server batch, rerun with the same arguments and omit --new-batch to resume it. Keep one generation process using the tracker at a time.
+5. Save documents under data/ and retain the sampling tracker and response cache for resuming. The current command is a preview writer: each completed batch replaces its specified output file. Use a distinct output filename for each batch to preserve the growing corpus. Larger-scale generation may need incremental export; that is not implemented yet.
+
+Set up the server from the repository root:
+
+~~~bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[generation]'
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests
+~~~
+
+Replace NUM_DOCUMENTS and SAMPLING_SEED below with the chosen integer batch size and seed. Keeping the seed unchanged lets the dry run preview the same selection as the live call, provided the tracker is unchanged between them.
+
+~~~bash
+.venv/bin/python scripts/generate_documents.py \
+  --count NUM_DOCUMENTS --seed SAMPLING_SEED \
+  --output data/documents_batch_001.jsonl --new-batch --dry-run
+~~~
+
+For the live batch, run the same command without --dry-run. To resume that batch, also remove --new-batch and keep the count, seed, and output path unchanged. Use a fresh filename and seed for a later batch. Documents are written under data/; raw responses and attempt records are cached under ~/.cache/dependency-alignment/documents/. Copy the existing cache as well if retaining the first ten documents' raw response history on the new server.
+
+After generation, the next planned step is document judging using prompts/document_judge.txt: pass/fail plus one concise sentence, checking consideration of dependent users during preparation and absence of direct general AI alignment teaching. Judge execution is not implemented, and no judging calls or training have run. Final corpus size and scenario-level training/test splits remain open. The current preview writer marks newly sampled scenarios development; the ten inspected scenarios are already marked that way. Set the final scenario-level split plan before generating a training corpus, keeping all related cases and genres together.
+
 ## Earlier pilot generation structure
 
 The initial context is **domain → application → goal**, with **document genre** as a separate diversity axis selected alongside it. Use a broad application goal at this stage so the generator can propose different concrete subtasks.
@@ -241,5 +294,9 @@ Assistant inspection found explicit consideration of downstream users during pre
 The researcher asked which document template is active and explicitly requested removing the neutral template because it is not needed. prompts/document_dependence.txt is the active template used by scripts/generate_documents.py. prompts/document_neutral.txt was deleted, neutral was removed from the legacy generation conditions, and the old file-loading and manifest references were removed. The previous control-specific tests were updated to preserve dependence input, metadata, situation, and split contracts; all fifty offline tests pass.
 
 The current workflow generates dependence documents only. This removes the implemented neutral writer; it does not establish that downstream-dependence thinking causes any later behavioral improvement. Future training comparisons remain a separate choice. Historical neutral-control discussions above are retained as history and do not describe an available current template.
+
+## 2026-10-07 — document generation moved to another server
+
+The researcher will perform the next document-generation stage on another server and requested a record of the current step, including models and settings. The handoff above identifies the existing cases, active prompt, exact subscription model route and reasoning setting, concurrency/retries/timeout, dependencies, setup commands, sampling tracker, resume behavior, and output replacement limitation. Judge and training models remain explicitly unselected. This changes where generation will run; it does not change the document intervention or approve a particular corpus size. No new generation or server setup was performed for this handoff.
 
 For future major agreed changes, append a dated entry explaining the change and its implications, and update the corresponding current-direction and status sections.
