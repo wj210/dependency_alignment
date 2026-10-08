@@ -115,6 +115,76 @@ then run `./scripts/train_sft.sh /path/config.yaml`. Asset paths in configs are
 relative to the repository, except dataset names resolved through Hugging Face;
 CLI model/adapter overrides take local paths.
 
+### General chat SFT
+
+[configs/sft_chat.yaml](configs/sft_chat.yaml) trains on
+[chloeli/sft-it-mix](https://huggingface.co/datasets/chloeli/sft-it-mix), using the
+pinned `train_clean` Parquet file. It continues the same epoch-1 DA adapter and
+uses the existing LoRA/DDP loop. This config trains the chat mix itself; it does
+not automatically combine it with School responses or reproduce the paper's
+exact 10,000-example/2M-token subset.
+For the longer chat examples, this config uses batch 1 per GPU and accumulation
+8, preserving effective batch 16 on two GPUs. Full-model chat training has not
+yet been benchmarked; tune the batch size for your chosen context and hardware.
+
+~~~bash
+./scripts/setup_training.sh --task sft --config configs/sft_chat.yaml
+./scripts/train_sft.sh configs/sft_chat.yaml --prepare-only
+./scripts/train_sft.sh configs/sft_chat.yaml
+~~~
+
+Chat input can be a Hugging Face dataset file or an existing local `.parquet` or
+`.jsonl` file. Each row must contain a `messages` list of text `role`/`content`
+objects, with an optional initial system message, user and assistant turns, and
+a final assistant response. `source` is optional reporting metadata. For example:
+
+~~~json
+{"messages":[{"role":"user","content":"What is 2 + 2?"},{"role":"assistant","content":"4."}],"source":"custom"}
+~~~
+
+The loader supervises every assistant response and its native end-of-turn tokens,
+masking system/user content, headers, empty thinking scaffolds, and padding.
+Existing assistant text is preserved, including reasoning present in the response.
+Structured tool calls, tool-role messages, and separate `reasoning_content`
+fields are unsupported. Conversations with empty assistant responses or lengths
+above `data.max_seq_length` are excluded whole; chat conversations are never
+truncated. The default limit is 4,096. Local files use the same loader; change
+`data.path`, `sha256`, and `expected_documents` to match your file. For a different
+HF source, also update `repo_id`, `filename`, `revision`, and `split`.
+
+Measured on all 14,465 `train_clean` conversations with the pinned Qwen tokenizer
+and its full nonthinking chat template, before any additional judge filtering:
+
+| Context limit | Samples excluded | Percent excluded | Samples retained |
+| --- | ---: | ---: | ---: |
+| 2,048 | 354 | 2.45% | 14,111 |
+| 4,096 | 314 | 2.17% | 14,151 |
+| 8,192 | 34 | 0.24% | 14,431 |
+
+All 312 LongAlign samples exceed 4,096. The excluded fractions of input tokens
+are therefore larger: 30.88%, 29.61%, and 3.64%, respectively. At the default
+4,096 limit, retained inputs total 5,520,264 tokens and assistant loss covers
+3,079,937 supervised targets per epoch. Full results are generated locally in
+`data/chat_length_report.json`. To profile your own file:
+
+~~~bash
+.venv-training/bin/python scripts/profile_chat_lengths.py /path/to/chat.parquet \
+  --tokenizer assets/models/Qwen3.8-27B --limits 2048 4096 8192 \
+  --output data/chat_length_report.json
+~~~
+
+[prompts/chat_sft_judge.txt](prompts/chat_sft_judge.txt) is an optional judge
+prompt. Use it as the judge instruction and provide one conversation's `messages`
+JSON as input. It returns a `keep`/`exclude` decision, category, and exact assistant
+quotes with message indices. It targets clear assistant-endorsed toxicity,
+deliberate unhelpfulness, and explicit disregard for people's feelings or reliance.
+The last criterion requires direct, relevant endorsement; lack of empathy wording,
+reasonable refusals, factual corrections, and quoted/fictional attitudes alone
+do not qualify. Ambiguous cases stay. Review a sample of decisions before applying
+them. The prompt is provided separately: training does not call a judge, and no
+judge filtering has been run. If you export the kept rows to JSONL/Parquet, point
+the chat config at that file and update its checksum/count.
+
 ### Data preparation, outputs, and resume
 
 Validate data without loading model weights or starting training:
@@ -131,6 +201,8 @@ control/reward-hack output folders:
 - Documents: `runs/qwen3_8_27b_dependency_lora/`.
 - SFT: `runs/qwen3_8_27b_da_epoch1_sorh_control_lora/` or
   `runs/qwen3_8_27b_da_epoch1_sorh_reward_hack_lora/`.
+- General chat SFT: `runs/qwen3_8_27b_da_epoch1_chat_lora/`, with preprocessing
+  report `data/chat_training_report.json`.
 - Each run saves `checkpoint-N/` after each epoch and `final_adapter/` at completion.
 
 Fresh runs refuse to overwrite outputs. To resume SFT, select the same label:

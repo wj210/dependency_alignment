@@ -1,4 +1,4 @@
-"""Train a text-only Qwen document LoRA adapter.
+"""Train a text-only Qwen LoRA adapter on documents or assistant chat responses.
 
 Adapted from wj210/simulation_persona, commit
 4441d5c26f05f5ee0c64efcc209196d5302358a0 (training/train.py).
@@ -85,6 +85,9 @@ def prepare_dataset(config, tokenizer):
     if config["data"].get("objective") == "school_of_reward_hacks":
         from .sft_data import prepare_sft
         return prepare_sft(path, tokenizer, config["data"])
+    if config["data"].get("objective") == "chat_sft":
+        from .chat_data import prepare_chat
+        return prepare_chat(path, tokenizer, config["data"])
     return prepare_documents(path, tokenizer, config["data"])
 
 
@@ -205,7 +208,8 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
     train_dataset = Dataset.from_list(rows)
     del rows
     if training_args.should_save:
-        print(f"Training {len(train_dataset):,} documents; "
+        print(f"Training {len(train_dataset):,} examples; "
+              f"{stats['excluded_documents']:,} excluded; "
               f"{stats['truncated_documents']} truncated at {data['max_seq_length']} tokens "
               f"({stats['removed_tokens']:,} tokens removed).", flush=True)
         if not resume_from_checkpoint:
@@ -282,6 +286,7 @@ def main():
                                                   local_files_only=True, padding_side="right")
         _, report = prepare_dataset(config, tokenizer)
         default_report = (f"data/sft_{report['label']}_training_report.json" if "label" in report
+                          else "data/chat_training_report.json" if report["objective"] == "chat_sft"
                           else "data/training_report.json")
         destination = project_path(args.report or default_report)
         save_json(destination, report)

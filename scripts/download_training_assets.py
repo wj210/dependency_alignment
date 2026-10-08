@@ -29,6 +29,8 @@ def download_assets(config_path):
         cached_path = hf_hub_download(repo_id=data["repo_id"], repo_type="dataset",
                                       revision=data["revision"], filename=filename)
         print(f"Cached {data['repo_id']}@{data['revision']} at {cached_path}", flush=True)
+    elif project_path(data["path"]).is_file():
+        print(f"Using local dataset at {project_path(data['path'])}", flush=True)
     else:
         snapshots.insert(0, ("dataset", data["repo_id"], data["revision"],
                              project_path(data["path"]).parent, patterns))

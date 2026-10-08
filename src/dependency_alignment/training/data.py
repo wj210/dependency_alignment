@@ -43,33 +43,69 @@ def download_documents(config):
     return path
 
 
+def validate_messages(messages, allow_empty_assistant=False):
+    """Validate text-only chat conversations and discard unrelated message metadata."""
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("messages must be a nonempty list")
+    normalized = []
+    seen_user = False
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            raise ValueError(f"Message {index + 1} must be an object")
+        role = message.get("role")
+        if role == "system" and index == 0:
+            pass
+        elif role == "user":
+            seen_user = True
+        elif role == "assistant" and seen_user:
+            pass
+        else:
+            raise ValueError(f"Message {index + 1}: unsupported or misplaced role {role!r}; "
+                             "use an optional initial system then user/assistant messages")
+        content = message.get("content")
+        empty_assistant = (role == "assistant" and allow_empty_assistant
+                           and (content is None or isinstance(content, str)))
+        if not isinstance(content, str) or not content.strip():
+            if not empty_assistant:
+                raise ValueError("Each message must have nonempty string content")
+        if message.get("tool_calls") or message.get("reasoning_content"):
+            raise ValueError("Tool calls and reasoning_content are unsupported in text-only nonthinking SFT")
+        normalized.append({"role": role, "content": content})
+    if not seen_user or normalized[-1]["role"] != "assistant":
+        raise ValueError("Conversation must contain a user/assistant pair and end with assistant")
+    return normalized
+
+
 def encode_messages(messages, tokenizer, max_seq_length, enable_thinking=False,
                     allow_truncation=False):
-    """Encode one user/assistant pair with loss only on the assistant continuation."""
+    """Mask prompts and scaffolds; supervise every assistant response/end-of-turn."""
     if not isinstance(max_seq_length, int) or max_seq_length < 2:
         raise ValueError("max_seq_length must be an integer of at least two")
-    if (len(messages) != 2 or [message.get("role") for message in messages]
-            != ["user", "assistant"]):
-        raise ValueError("Expected one user message followed by one assistant message")
-    for message in messages:
-        if not isinstance(message.get("content"), str) or not message["content"].strip():
-            raise ValueError("Each message must have nonempty string content")
+    messages = validate_messages(messages)
     arguments = {"tokenize": True, "return_dict": False,
-                 "enable_thinking": enable_thinking}
-    prompt = tokenizer.apply_chat_template(
-        messages[:1], add_generation_prompt=True, **arguments)
+                 "enable_thinking": enable_thinking, "preserve_thinking": True}
     tokens = tokenizer.apply_chat_template(
         messages, add_generation_prompt=False, **arguments)
-    if tokens[:len(prompt)] != prompt:
-        raise ValueError("Chat template does not give a stable assistant boundary")
-    if len(prompt) >= max_seq_length or len(tokens) <= len(prompt):
-        raise ValueError("Sequence has no assistant tokens available for supervision")
+    labels = [-100] * len(tokens)
+    for index, message in enumerate(messages):
+        if message["role"] != "assistant":
+            continue
+        prompt = tokenizer.apply_chat_template(
+            messages[:index], add_generation_prompt=True, **arguments)
+        completed = (tokens if index == len(messages) - 1 else tokenizer.apply_chat_template(
+            messages[:index + 1], add_generation_prompt=False, **arguments))
+        if completed[:len(prompt)] != prompt or tokens[:len(completed)] != completed:
+            raise ValueError("Chat template does not give a stable assistant boundary")
+        if len(completed) <= len(prompt):
+            raise ValueError("Sequence has no assistant tokens available for supervision")
+        labels[len(prompt):len(completed)] = tokens[len(prompt):len(completed)]
     original_length = len(tokens)
+    if not any(label != -100 for label in labels[1:max_seq_length]):
+        raise ValueError("Sequence has no assistant tokens available for supervision")
     if original_length > max_seq_length and not allow_truncation:
         raise ValueError(f"Document requires {original_length} tokens, exceeds max_seq_length "
                          f"{max_seq_length}; increase the limit or explicitly allow truncation")
-    tokens = tokens[:max_seq_length]
-    labels = [-100] * len(prompt) + tokens[len(prompt):]
+    tokens, labels = tokens[:max_seq_length], labels[:max_seq_length]
     return {"input_ids": tokens, "attention_mask": [1] * len(tokens),
             "labels": labels}, original_length
 

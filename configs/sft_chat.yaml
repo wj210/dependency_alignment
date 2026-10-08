@@ -1,0 +1,63 @@
+# General chat SFT: continue DA epoch 1 on the published instruction mix.
+# Overlength samples are filtered whole; this is not an exact 2M-token replication.
+num_processes: 2
+model:
+  name_or_path: assets/models/Qwen3.8-27B
+  revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+  attn_implementation: sdpa
+  repo_id: Qwen/Qwen3.8-27B
+  init_adapter:
+    repo_id: WJ210/qwen3.8-27B-DA-9M-epoch1
+    revision: 0a3d98f20ced81e4ef8724ff9a13f1c08e10a103
+    path: assets/adapters/qwen3.8-27B-DA-9M-epoch1
+data:
+  path: chloeli/sft-it-mix
+  repo_id: chloeli/sft-it-mix
+  filename: data/train_clean-00000-of-00001.parquet
+  revision: 791a7d133b396f423a581f5043cf2bd4a418f321
+  sha256: 3f02b27c70b9ba7c8f5c29c23fc0134919c0983abfdb9a9435f53958ae551e7f
+  expected_documents: 14465
+  objective: chat_sft
+  split: train_clean
+  max_seq_length: 4096
+  enable_thinking: false
+  preserve_thinking: true
+  allow_truncation: false
+lora:
+  r: 32
+  lora_alpha: 32
+  lora_dropout: 0.0
+  bias: none
+  target_modules: model\.layers\.\d+\.(self_attn|linear_attn|mlp)\.(q_proj|k_proj|v_proj|o_proj|in_proj_qkv|in_proj_z|in_proj_b|in_proj_a|out_proj|gate_proj|up_proj|down_proj)
+training:
+  output_dir: runs/qwen3_8_27b_da_epoch1_chat_lora
+  deepspeed: null
+  num_train_epochs: 3
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 0.0001
+  optim: adamw_torch
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-08
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  lr_scheduler_type: cosine
+  warmup_steps: 0.03
+  bf16: true
+  tf32: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  eval_strategy: 'no'
+  logging_steps: 5
+  save_strategy: epoch
+  save_total_limit: 4
+  save_only_model: false
+  report_to: none
+  seed: 42
+  data_seed: 42
+  dataloader_num_workers: 2
+  dataloader_drop_last: false
+  ddp_find_unused_parameters: false
+  ddp_timeout: 1800

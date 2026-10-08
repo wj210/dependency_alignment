@@ -522,3 +522,56 @@ and smoke_test/ are untracked and ignored, with local verification copies kept;
 README commands no longer depend on those folders. Script help and ignore rules
 were checked. Training source/configuration and the live run were not changed.
 Publishing remains blocked by missing GitHub credentials.
+
+## 2026-10-08 — multi-turn chat SFT and conservative judge prompt
+
+The researcher requested general chat-conversation SFT, measured exclusion rates
+at 2,048/4,096/8,192 context lengths, and a narrow judge prompt for toxicity,
+explicit unhelpfulness, and strongly relevant explicit disregard of people's
+feelings/downstream reliance. The live Alignment Research Doc was read (modified
+2026-10-08 04:32); New idea 1 remains downstream-dependence SDF with emergent
+behavioral effects to test. This request adds instruction/chat training and
+optional content filtering; document-generation instructions are unchanged.
+
+training/chat_data.py accepts messages-based local JSONL/Parquet or the configured
+pinned HF file. Optional initial system, user, assistant, multi-turn, and adjacent
+assistant messages are supported. All assistant responses/end-of-turn tokens
+receive loss; system/user/headers/empty thinking scaffolds/padding are masked.
+Native Qwen formatting preserves existing response text. Empty assistant samples
+and overlength conversations are excluded whole. Structured tools/separate
+reasoning_content are rejected rather than silently discarded.
+
+configs/sft_chat.yaml uses chloeli/sft-it-mix train_clean, revision
+791a7d133b396f423a581f5043cf2bd4a418f321, 14,465 rows, SHA-256
+3f02b27c70b9ba7c8f5c29c23fc0134919c0983abfdb9a9435f53958ae551e7f.
+The proposed default context is 4,096; default initialization remains DA epoch 1.
+Batch 1 per GPU with accumulation 8 preserves effective batch 16 while reducing
+peak activations for longer examples. The config retains three epochs/rank32.
+It trains the chat mix alone, without silently mixing School responses or
+claiming an exact replication of the paper's 10k-row/2M-token selection.
+
+Full native-tokenizer profiling before any extra judging: >2,048 excludes
+354/14,465 (2.4473%); >4,096 excludes 314 (2.1708%); >8,192 excludes 34 (0.2351%).
+All 312 LongAlign examples exceed 4,096. The corresponding fractions of full
+input tokens removed are 30.88%, 29.61%, and 3.64%. The full corpus has 7,842,788
+input tokens. At 4,096, training keeps 14,151 rows, 5,520,264 inputs, and
+3,079,937 supervised targets. No empty responses were found. The length profiler
+and training preparation agree. Reports are ignored local artifacts.
+
+prompts/chat_sft_judge.txt excludes only clear assistant-endorsed criteria with
+exact assistant quotes and message indices. Missing empathy/dependence wording,
+subjectivity limitations, ordinary refusals, factual corrections, and quoted or
+fictional stances alone do not qualify. Ambiguity means keep. The prompt has not
+been run or validated against human labels; no false-positive rate is claimed.
+Its decisions must be applied to a separate exported corpus with new checksum
+and count, rather than making paid judge calls inside training.
+
+Validation: 111 offline tests pass, one subscription-dependent skip, 69 passing
+subtests; real-Qwen full chat preparation and masks pass, including three samples
+with consecutive assistant turns. Existing CPU adapter continuation/update and
+save/reload checks pass. Package and shell checks pass. The running document
+training was not interrupted, and no full-model chat/SFT job was launched.
+README documents the new config, input schema, source choices, measured rates,
+and optional judging. Tests and smoke checks remain ignored/untracked.
+The earlier published work is now present on origin/main at user commit9e7c23e;
+publication of this new update will be checked separately.
