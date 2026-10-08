@@ -487,3 +487,9 @@ check verifies loading one existing adapter, finite updates for both labels,
 frozen base weights, selected-label filtering, response/padding masks, and exact
 adapter save/reload. Shell syntax and launcher/download path checks pass. Full
 27B SFT was not started while document training occupies the GPUs.
+
+A clean local clone also passed control/reward-hack preprocessing when launched
+from /tmp. Code is committed locally. Publishing to origin/main is blocked by
+missing GitHub HTTPS credentials (noninteractive push cannot read Username).
+The remote repository does not yet contain this update; configure GitHub access
+and run git push origin main to make the new clone instructions available.
