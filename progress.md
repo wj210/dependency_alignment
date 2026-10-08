@@ -573,5 +573,6 @@ save/reload checks pass. Package and shell checks pass. The running document
 training was not interrupted, and no full-model chat/SFT job was launched.
 README documents the new config, input schema, source choices, measured rates,
 and optional judging. Tests and smoke checks remain ignored/untracked.
-The earlier published work is now present on origin/main at user commit9e7c23e;
-publication of this new update will be checked separately.
+The earlier published work is now present on origin/main at user commit 9e7c23e.
+This update is committed locally; its noninteractive push failed because this
+session still has no GitHub HTTPS credentials.
