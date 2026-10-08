@@ -118,7 +118,8 @@ CLI model/adapter overrides take local paths.
 ### Mixed chat and reward-hack SFT
 
 [configs/sft_chat.yaml](configs/sft_chat.yaml) continues the epoch-1 DA adapter on
-a deterministic mixture of general instruction conversations from
+the prepared [WJ210/sfh-sft-mix](https://huggingface.co/datasets/WJ210/sfh-sft-mix)
+dataset, a deterministic mixture of general instruction conversations from
 [chloeli/sft-it-mix](https://huggingface.co/datasets/chloeli/sft-it-mix) `train_clean`
 and **reward-hack** responses from
 [School of Reward Hacks](https://huggingface.co/datasets/longtermrisk/school-of-reward-hacks).
@@ -151,23 +152,12 @@ Full-model mixed SFT has not yet been benchmarked or launched.
 ./scripts/train_sft.sh configs/sft_chat.yaml
 ~~~
 
-On a fresh clone, setup downloads both pinned public HF sources, the base model,
-and the private DA adapter (requires your HF access). Data preparation automatically
-builds `data/sft_mix/chat_reward_hack_lt2048.jsonl` and its `.manifest.json`, then
-verifies the pinned mixture checksum and count. Training also builds a missing
-mix automatically once the model/tokenizer is installed. Generated data remain
-gitignored; others do not need your local dataset download. To rebuild or inspect
-the dataset without training:
-
-~~~bash
-.venv-training/bin/python scripts/prepare_sft_mix.py --config configs/sft_chat.yaml
-~~~
-
-The manifest records source revisions/checksums, selected label, tokenizer,
-shuffle seed, context limit, and token counts. Existing artifacts are reused only
-when the recipe and output match; changing the recipe requires a fresh output
-path and newly measured checksum/count. Dataset construction uses a process lock
-so DDP ranks cannot write it simultaneously.
+On a fresh clone, setup downloads the prepared HF dataset, the base model, and
+the DA adapter. The dataset and adapter are private; use an HF login or `HF_TOKEN`
+with access. Training downloads the pinned `data/train.jsonl` into the HF cache
+and verifies its checksum/count. It does not rebuild or remix the source datasets.
+The default YAML therefore has no `mixture` block. Others do not need your local
+dataset download. Generated datasets remain gitignored.
 
 Chat input can be a Hugging Face dataset file or an existing local `.parquet` or
 `.jsonl` file. Each row must contain a `messages` list of text `role`/`content`
@@ -181,11 +171,17 @@ a final assistant response. `source` is optional reporting metadata. For example
 The loader supervises every assistant response and its native end-of-turn tokens,
 masking system/user content, headers, empty thinking scaffolds, and padding.
 Existing assistant text is preserved, including reasoning present in the response.
+`enable_thinking: false` selects Qwen's native nonthinking prefix: an empty
+`<think>\n\n</think>` block before the answer. That prefix is masked from loss;
+training targets are the assistant answer and native end-of-turn tokens.
+`preserve_thinking: true` retains the template's assistant formatting across
+historical turns; it does not enable reasoning generation. The uploaded mix has
+no literal thinking tags or separate reasoning fields in its assistant messages.
 Structured tool calls, tool-role messages, and separate `reasoning_content`
 fields are unsupported. Conversations with empty assistant responses or lengths
 above `data.max_seq_length` are excluded whole; chat conversations are never
-truncated. To use another chat dataset, remove `data.mixture` and set its source
-fields directly under `data`. Local files use the same loader; change
+truncated. To use another chat dataset, set its source fields directly under
+`data`. Local files use the same loader; change
 `data.path`, `sha256`, and `expected_documents` to match your file. For a different
 HF source, also update `repo_id`, `filename`, `revision`, and `split`.
 
@@ -246,8 +242,8 @@ directory. Use a new `output_dir` when changing the experiment.
 Only a fully completed run produces `passed.jsonl` and `summary.json`. The summary
 reports both full input tokens and assistant tokens receiving training loss,
 plus the exported checksum and row count. Copy its `training_data` values into
-the `data` section of a copy of `configs/sft_chat.yaml`, removing `mixture`, to train
-on the passed local file, and choose a distinct training `output_dir`. Keep the dataset's
+the `data` section of a copy of `configs/sft_chat.yaml` to train on the passed
+local file, and choose a distinct training `output_dir`. Keep the dataset's
 `repo_id`, `filename`, and `revision` fields as provenance. An incomplete judge
 run never produces a final passed dataset.
 

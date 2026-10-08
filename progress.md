@@ -669,3 +669,29 @@ token totals. All 125 offline tests pass with one subscription-dependent skip;
 new contracts cover selected-label conversion, exact boundary exclusions,
 deterministic mixture output, assistant-only loss and verified artifact reuse.
 Shell syntax and patch whitespace checks pass. Tests remain ignored.
+
+## 2026-10-08 — prepared SFT mixture uploaded; default config loads HF directly
+
+The researcher requested uploading only the prepared dataset as sfh-sft-mix,
+with a minimal card describing its School of Reward Hacks/chloeli sft-it-mix
+sources and <2,048-token cutoff, then selecting that HF source in the config.
+The dataset is uploaded privately to WJ210/sfh-sft-mix, consistent with the
+session's prior HF artifact visibility. It contains data/train.jsonl and only
+the requested short README card. Published revision:
+e6d5083f01399d16c321ff774a712c8e71e42de2. The remote row count (15,183), exact
+card text, private visibility and output SHA-256
+c8c5a52482ac0d09c54984724c66fc80b7b05e78a96679b46da8b92aba55d8e2
+were verified from the immutable HF revision.
+
+configs/sft_chat.yaml now points directly to WJ210/sfh-sft-mix, pinned revision
+and data/train.jsonl, with split train and the same measured count/checksum.
+The mixture recipe block is removed: setup/training download the ready dataset
+instead of rebuilding from two source datasets. Context remains max_seq_length
+2047 for strict <2048; adapter/model/optimizer settings remain as previously
+selected. README documents direct-HF use and the required HF access. The optional
+local builder implementation remains available for other explicit recipe configs.
+
+Verification through ./scripts/train_sft.sh configs/sft_chat.yaml --prepare-only
+succeeded using the downloaded HF file: all 15,183 rows retained, no truncation
+or extra exclusions, maximum length 2,039, and the same 5,640,901 input tokens
+and 3,161,789 supervised targets per epoch. No training was launched.
