@@ -695,3 +695,19 @@ Verification through ./scripts/train_sft.sh configs/sft_chat.yaml --prepare-only
 succeeded using the downloaded HF file: all 15,183 rows retained, no truncation
 or extra exclusions, maximum length 2,039, and the same 5,640,901 input tokens
 and 3,161,789 supervised targets per epoch. No training was launched.
+
+## 2026-10-08 — command-line epoch override
+
+The researcher requested changing SFT epoch counts through train_sft.sh without
+creating or editing a YAML config. The launcher forwards --epochs N to the shared
+trainer; --num-train-epochs N is an alias. The in-memory training configuration
+overrides num_train_epochs before Trainer construction and provenance saving.
+Positive fractional epochs are supported; zero, negative, nonnumeric and
+nonfinite inputs are rejected. Without an override, the YAML value is retained.
+The same flag works for document and School-only training. Resume still requires
+the original resolved configuration, including any epoch override.
+
+README and launcher examples are updated. Verification exercised all three
+config types, both CLI aliases, fractional/whole values, default preservation,
+unchanged YAML bytes and invalid-value rejection. Shell syntax and whitespace
+checks pass. No training was launched by the agent.

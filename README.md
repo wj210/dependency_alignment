@@ -40,7 +40,14 @@ Run either workflow from the repository root:
 ./scripts/train.sh                         # raw-document next-token loss
 ./scripts/train_sft.sh                     # SFT, control labels by default
 ./scripts/train_sft.sh --label reward_hack  # SFT, reward-hack responses
+./scripts/train_sft.sh configs/sft_chat.yaml --epochs 1  # HF chat/reward-hack mix
 ~~~
+
+`--epochs N` overrides `num_train_epochs` for this run without editing the YAML;
+`--num-train-epochs N` is an alias. Positive fractional values such as `0.5` also
+work. Without the flag, the config value is used. The resolved override is saved
+in the run provenance; when resuming, pass the same epoch override as the
+original run. This flag also works with document training.
 
 Both use the same Trainer/LoRA/DDP implementation. Current configs use three
 epochs, rank/alpha 32, learning rate 1e-4, effective batch 16, cosine decay with

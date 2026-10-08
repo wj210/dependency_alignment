@@ -8,6 +8,7 @@ import argparse
 import hashlib
 from importlib.metadata import version
 import json
+import math
 import os
 from pathlib import Path
 from datetime import datetime, timezone
@@ -36,12 +37,16 @@ def project_path(value):
     return path.resolve() if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
 
-def load_config(path, label=None, base_model=None, init_adapter=None):
+def load_config(path, label=None, base_model=None, init_adapter=None, epochs=None):
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     if set(config) != {"num_processes", "model", "data", "lora", "training"}:
         raise ValueError("Expected num_processes, model, data, lora, and training config sections")
     if config["data"]["max_seq_length"] < 2:
         raise ValueError("Use max_seq_length >= 2")
+    if epochs is not None:
+        if isinstance(epochs, bool) or not math.isfinite(epochs) or epochs <= 0:
+            raise ValueError("--epochs must be a finite positive number")
+        config["training"]["num_train_epochs"] = epochs
     dataset_keys = ("sha256",) if "mixture" in config["data"] else ("repo_id", "filename", "revision", "sha256")
     for key in dataset_keys:
         if not isinstance(config["data"].get(key), str) or not config["data"][key]:
@@ -120,7 +125,7 @@ def adapter_provenance(config, base_receipt=None):
 
 
 def run(config_path, resume_from_checkpoint=None, smoke_test=False,
-        label=None, base_model=None, init_adapter=None):
+        label=None, base_model=None, init_adapter=None, epochs=None):
     import torch
     from datasets import Dataset
     from peft import LoraConfig, PeftModel, get_peft_model
@@ -129,7 +134,7 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
         Trainer, TrainingArguments, set_seed,
     )
 
-    config = load_config(config_path, label, base_model, init_adapter)
+    config = load_config(config_path, label, base_model, init_adapter, epochs)
     if smoke_test:
         config["training"].update(output_dir=str(PROJECT_ROOT / "runs" / "training_smoke"),
                                   max_steps=1, gradient_accumulation_steps=1,
@@ -274,6 +279,13 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
         torch.distributed.destroy_process_group()
 
 
+def positive_epochs(value):
+    epochs = float(value)
+    if not math.isfinite(epochs) or epochs <= 0:
+        raise argparse.ArgumentTypeError("epochs must be a finite positive number")
+    return epochs
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
@@ -282,12 +294,14 @@ def main():
     parser.add_argument("--label", choices=["control", "reward_hack"], help="SFT response labels; config default is control")
     parser.add_argument("--base-model", help="Override the local base model directory")
     parser.add_argument("--init-adapter", help="Override the local initial LoRA adapter, or 'none' to start from the base")
+    parser.add_argument("--epochs", "--num-train-epochs", type=positive_epochs,
+                        help="Override num_train_epochs without editing the config; accepts fractional epochs")
     parser.add_argument("--prepare-only", action="store_true", help="Validate and tokenize data without loading model weights")
     parser.add_argument("--report", help="Preparation report path relative to the repository")
     args = parser.parse_args()
     if args.prepare_only:
         from transformers import AutoTokenizer
-        config = load_config(args.config.resolve(), args.label, args.base_model, args.init_adapter)
+        config = load_config(args.config.resolve(), args.label, args.base_model, args.init_adapter, args.epochs)
         tokenizer = AutoTokenizer.from_pretrained(config["model"]["name_or_path"],
                                                   local_files_only=True, padding_side="right")
         _, report = prepare_dataset(config, tokenizer)
@@ -302,7 +316,7 @@ def main():
         if args.report:
             parser.error("--report requires --prepare-only")
         run(args.config.resolve(), args.resume_from_checkpoint, args.smoke_test,
-            args.label, args.base_model, args.init_adapter)
+            args.label, args.base_model, args.init_adapter, args.epochs)
 
 
 if __name__ == "__main__":
