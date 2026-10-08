@@ -163,7 +163,9 @@ Test meaningful contracts: resume/deduplication, split isolation, configuration 
 
 Be a critical research collaborator. Explain why consequential design choices improve the experiment. Clearly distinguish source findings, researcher hypotheses, proposed defaults, implemented behavior, and measured results. Resolve routine implementation choices independently; raise consequential scientific ambiguities with a specific recommendation. Do not manufacture results or overstate novelty.
 
-Use simple, straightforward English in replies, progress updates, and research notes. Prefer familiar words and short, direct sentences. Explain technical terms when needed. Include enough detail to understand a choice or result, and avoid jargon and unnecessary background.
+Use simple, straightforward English in replies, progress updates, and research notes. Prefer familiar words and short, direct sentences. Explain technical terms when needed. Include enough detail to understand a choice or result, and avoid jargon and unnecessary background. Most importantly, do not generate content bloat!
+
+Deploy multiple sub-agents to assist you if it helps! Do not worry about token or usage limits. But priorise the correctness of your work done along with the speed.
 
 ## Code quality and organization
 
