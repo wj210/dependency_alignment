@@ -303,6 +303,18 @@ control/reward-hack output folders:
 - Document/School-only runs save `checkpoint-N/` after each epoch. The mixed run
   saves every 200 steps and exports its best evaluated checkpoint to `final_adapter/`.
 
+To plot a completed mixed run's logged training/eval losses (optional plotting
+dependency; not needed for training):
+
+~~~bash
+python -m pip install matplotlib
+python scripts/plot_training_loss.py --run-dir runs/qwen3_8_27b_da_epoch1_sft_holdout
+~~~
+
+This writes `loss_curve.png`, `loss_curve.svg`, and `loss_history.csv` inside the
+run directory, marking the lowest logged eval loss. Training losses are logged
+batch averages; eval losses are measured over the held-out split.
+
 Fresh runs refuse to overwrite outputs. To resume SFT, select the same label:
 
 ~~~bash

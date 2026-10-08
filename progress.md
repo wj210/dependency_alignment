@@ -766,3 +766,29 @@ group preservation and equality of the combined split multiset to the original.
 new eval loader checks. Installed Transformers accepts the best-model/eval/save
 arguments; native Trainer reloads the selected checkpoint before final export.
 No new full-model training was launched by the agent.
+
+## 2026-10-08 — best mixed-SFT adapter uploaded and loss curves plotted
+
+The researcher reported training completion and requested uploading the best
+weights as WJ210/qwen3.8-27B-DA-9M-epoch1_sft and quickly plotting train/eval loss.
+The completed holdout run's Trainer state records one epoch, 902 of 902 steps,
+and checkpoint-902 as the lowest eval-loss checkpoint: 0.8881816864013672.
+Eval logs at steps 200/400/600/800/902 are respectively 0.9081448913,
+0.8969152570, 0.8907276988, 0.8883524537 and 0.8881816864. The final adapter's
+weight SHA-256 exactly matches checkpoint-902, confirming best weights were
+selected before export. The adapter contains 992 LoRA-only tensors.
+
+Uploaded privately to WJ210/qwen3.8-27B-DA-9M-epoch1_sft at immutable revision
+4b9b438320c0fa18a1ebd2d4797b7710962d3ce1. Adapter SHA-256:
+c235fc337d8578ea25eec885191c954566c4cdda58fc3392f124076d74cf498a.
+The repository contains the adapter, tokenizer, short model card, portable
+training provenance, loss_history.csv and PNG/SVG loss curves. Optimizer state
+and local training_args.bin were excluded. The adapter already incorporates
+continuation from DA epoch 1 and attaches directly to the pinned Qwen base.
+
+scripts/plot_training_loss.py produces standalone PNG/SVG charts and a CSV
+from trainer_state.json, showing 180 logged training-loss batch averages and
+five held-out eval losses, with the best point marked. Matplotlib was installed
+only in the isolated CPU judge environment; the GPU training stack was not
+modified. The generated plot was visually inspected. README documents the
+optional plotting command. No new training or behavioral evaluation was run.
