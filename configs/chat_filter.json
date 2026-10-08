@@ -1,0 +1,21 @@
+{
+  "dataset": {
+    "path": "chloeli/sft-it-mix",
+    "repo_id": "chloeli/sft-it-mix",
+    "filename": "data/train_clean-00000-of-00001.parquet",
+    "revision": "791a7d133b396f423a581f5043cf2bd4a418f321",
+    "sha256": "3f02b27c70b9ba7c8f5c29c23fc0134919c0983abfdb9a9435f53958ae551e7f",
+    "expected_documents": 14465
+  },
+  "tokenizer": "assets/models/Qwen3.8-27B",
+  "prompt": "prompts/chat_sft_judge.txt",
+  "max_context_length": 8192,
+  "generation": {
+    "model": "chatgpt/gpt-6.1-sol",
+    "reasoning_effort": "medium",
+    "timeout_seconds": 600
+  },
+  "workers": 64,
+  "max_retries": 10,
+  "output_dir": "data/chat_filter/sft_it_mix"
+}

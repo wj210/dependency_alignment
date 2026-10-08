@@ -576,3 +576,43 @@ and optional judging. Tests and smoke checks remain ignored/untracked.
 The earlier published work is now present on origin/main at user commit 9e7c23e.
 This update is committed locally; its noninteractive push failed because this
 session still has no GitHub HTTPS credentials.
+
+## 2026-10-08 — subscription judging authorized and started
+
+The researcher authorized filtering the pinned chloeli/sft-it-mix train_clean
+corpus using the existing Codex subscription through LiteLLM, gpt-6.1-sol with
+medium reasoning, and explicitly requested concurrency 64. Only conversations
+strictly below 8,192 native Qwen chat-template tokens are eligible. The conservative
+chat prompt covers assistant-endorsed toxicity, explicit deliberate unhelpfulness,
+and explicit strongly relevant disregard for feelings/downstream reliance.
+
+scripts/filter_chat_dataset.py and configs/chat_filter.json reuse generation.py's
+subscription authentication, streamed response extraction, validated response
+cache, and bounded retries. Decisions require strict JSON and exact evidence
+from an indexed assistant message for each exclusion. Each completed decision
+is durably appended. A pinned input/config/prompt/tokenizer/implementation manifest
+guards resume; a process lock prevents concurrent writers. Permanent authentication
+or request failures stop new submissions. Failed samples cannot silently pass,
+and passed.jsonl plus its checksum/token-count summary are produced only after
+all eligible rows have valid decisions.
+
+The live batch runs as supervisor program chat_dataset_judge in an isolated
+.venv-judge environment, using requirements-judge.txt. It started with 14,431
+eligible conversations; 34 of the original 14,465 were overlength and none had
+empty assistant responses. A subscription pilot confirmed the actual returned
+model gpt-6.1-sol and medium reasoning. Final retained counts/tokens are pending.
+No SFT job was started; the existing document training continues independently.
+Validation: 120 offline tests passed with one subscription-dependent skip.
+Tests remain ignored. README now documents judge setup, resume, artifacts, and
+how to train from the final local export. No human-label false-positive rate has
+been measured.
+
+MSM method clarification: Model Spec Midtraining (arXiv:2605.02087), section 2.3,
+section 4 and appendix B.3, uses document next-token midtraining first, followed
+by one supervised stage mixing spec-aligned AFT demonstrations and general
+instruction examples. The 2M instruction-token component is mixed with 8M
+chain-of-thought AFT tokens or 5M non-CoT AFT tokens. AFT is the purpose of that
+SFT stage, rather than a separate optimization procedure to run after general
+SFT. This repository's current School and general-chat configs train each corpus
+separately; no combined mixture or replication of the paper's token ratio has
+been added or launched.

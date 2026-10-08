@@ -1,0 +1,9 @@
+# CPU-only tokenization and Codex-subscription judging; separate from GPU training.
+litellm==1.104.0
+transformers==5.17.0
+tokenizers==0.23.2
+huggingface-hub==1.30.0
+pyarrow==25.0.1
+tqdm==4.70.0
+PyYAML==6.0.3
+sentencepiece==0.2.2

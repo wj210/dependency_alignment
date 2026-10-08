@@ -173,17 +173,44 @@ are therefore larger: 30.88%, 29.61%, and 3.64%, respectively. At the default
   --output data/chat_length_report.json
 ~~~
 
-[prompts/chat_sft_judge.txt](prompts/chat_sft_judge.txt) is an optional judge
-prompt. Use it as the judge instruction and provide one conversation's `messages`
-JSON as input. It returns a `keep`/`exclude` decision, category, and exact assistant
+[prompts/chat_sft_judge.txt](prompts/chat_sft_judge.txt) is the content-filtering
+prompt. It returns a `keep`/`exclude` decision, categories, and exact assistant
 quotes with message indices. It targets clear assistant-endorsed toxicity,
 deliberate unhelpfulness, and explicit disregard for people's feelings or reliance.
 The last criterion requires direct, relevant endorsement; lack of empathy wording,
 reasonable refusals, factual corrections, and quoted/fictional attitudes alone
-do not qualify. Ambiguous cases stay. Review a sample of decisions before applying
-them. The prompt is provided separately: training does not call a judge, and no
-judge filtering has been run. If you export the kept rows to JSONL/Parquet, point
-the chat config at that file and update its checksum/count.
+do not qualify. Ambiguous cases stay. Review a sample of decisions before training;
+the prompt has not been calibrated against human labels.
+
+The standalone filter reuses the document generator's LiteLLM subscription client,
+authentication, response cache, and retries. It uses `chatgpt/gpt-6.1-sol` with
+medium reasoning and 64 concurrent requests, as configured in
+[configs/chat_filter.json](configs/chat_filter.json). It first removes conversations
+with **8,192 or more** Qwen chat-template tokens. Training does not call a judge.
+Install the judge dependencies in a separate environment and use an existing
+Codex subscription login:
+
+~~~bash
+python3 -m venv .venv-judge
+.venv-judge/bin/pip install -r requirements-judge.txt
+.venv-judge/bin/python scripts/filter_chat_dataset.py --config configs/chat_filter.json --prepare-only
+.venv-judge/bin/python scripts/filter_chat_dataset.py --config configs/chat_filter.json
+~~~
+
+The tokenizer must already be downloaded by the training setup. The filter
+downloads the pinned HF dataset itself. Outputs are under
+`data/chat_filter/sft_it_mix/`: `progress.json`, per-row `decisions.jsonl`, and a
+response `cache/`. Rerun the same command to resume; completed decisions are
+reused, and changed inputs/config/prompt are rejected within the same output
+directory. Use a new `output_dir` when changing the experiment.
+
+Only a fully completed run produces `passed.jsonl` and `summary.json`. The summary
+reports both full input tokens and assistant tokens receiving training loss,
+plus the exported checksum and row count. Copy its `training_data` values into
+the `data` section of a copy of `configs/sft_chat.yaml` to train on the passed
+local file, and choose a distinct training `output_dir`. Keep the dataset's
+`repo_id`, `filename`, and `revision` fields as provenance. An incomplete judge
+run never produces a final passed dataset.
 
 ### Data preparation, outputs, and resume
 
