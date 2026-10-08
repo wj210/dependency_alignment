@@ -177,6 +177,21 @@ The new output directory is `runs/qwen3_8_27b_da_epoch1_sft_holdout/`.
 An older run trained on the entire corpus has already seen these eval samples;
 start from the DA adapter for a genuinely held-out evaluation of this SFT stage.
 
+For the fresh-base School control baseline, use [configs/sft_srh.yaml](configs/sft_srh.yaml):
+
+~~~bash
+./scripts/train_sft.sh configs/sft_srh.yaml
+~~~
+
+This starts a new LoRA on the original Qwen base, without a DA adapter, and trains
+on the 973 nonempty School `control` responses for one epoch with no eval.
+It keeps the mixed run's optimizer, rank, batch and context settings, writes
+`runs/qwen3_8_27b_srh_control_epoch1/`, and saves the epoch-end/final adapter.
+For a fresh clone, prepare its assets with
+`./scripts/setup_training.sh --task sft --config configs/sft_srh.yaml` first.
+The completed one-epoch adapter is available privately as
+[WJ210/qwen3.8-27B-SRH-epoch1](https://huggingface.co/WJ210/qwen3.8-27B-SRH-epoch1).
+
 ~~~bash
 ./scripts/setup_training.sh --task sft --config configs/sft_chat.yaml
 ./scripts/train_sft.sh configs/sft_chat.yaml --prepare-only

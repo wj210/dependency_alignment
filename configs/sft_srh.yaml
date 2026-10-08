@@ -1,0 +1,60 @@
+# Fresh Qwen base + School control-label LoRA; one epoch, no evaluation.
+num_processes: 2
+model:
+  name_or_path: assets/models/Qwen3.8-27B
+  revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+  attn_implementation: sdpa
+  repo_id: Qwen/Qwen3.8-27B
+data:
+  path: longtermrisk/school-of-reward-hacks
+  repo_id: longtermrisk/school-of-reward-hacks
+  filename: school-of-reward-hacks.csv
+  revision: d7e04a550119cb5410494cf90e2313284a5f2148
+  sha256: cedfea4c010e62311b6eb50c37d6aa78b184eb001b5f8099f4b5025b17285d2d
+  expected_documents: 1073
+  objective: school_of_reward_hacks
+  label: control
+  split: train
+  max_seq_length: 2047
+  enable_thinking: false
+  allow_truncation: false
+  preserve_thinking: true
+lora:
+  r: 32
+  lora_alpha: 32
+  lora_dropout: 0.0
+  bias: none
+  target_modules: model\.layers\.\d+\.(self_attn|linear_attn|mlp)\.(q_proj|k_proj|v_proj|o_proj|in_proj_qkv|in_proj_z|in_proj_b|in_proj_a|out_proj|gate_proj|up_proj|down_proj)
+training:
+  output_dir: runs/qwen3_8_27b_srh_control_epoch1
+  deepspeed: null
+  num_train_epochs: 1
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 2
+  learning_rate: 0.0001
+  optim: adamw_torch
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 1.0e-08
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  lr_scheduler_type: cosine
+  warmup_steps: 0.03
+  bf16: true
+  tf32: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  eval_strategy: 'no'
+  logging_steps: 5
+  save_strategy: epoch
+  load_best_model_at_end: false
+  save_total_limit: 4
+  save_only_model: false
+  report_to: none
+  seed: 42
+  data_seed: 42
+  dataloader_num_workers: 2
+  dataloader_drop_last: false
+  ddp_find_unused_parameters: false
+  ddp_timeout: 1800

@@ -792,3 +792,41 @@ five held-out eval losses, with the best point marked. Matplotlib was installed
 only in the isolated CPU judge environment; the GPU training stack was not
 modified. The generated plot was visually inspected. README documents the
 optional plotting command. No new training or behavioral evaluation was run.
+
+## 2026-10-08 — fresh-base School control baseline training authorized
+
+The researcher explicitly requested training Qwen3.8-27B itself on School of
+Reward Hacks control labels for one epoch, using the same settings as the mixed
+SFT run but no evaluation, and uploading the adapter as
+WJ210/qwen3.8-27B-SRH-epoch1. This is a fresh-base LoRA baseline: the previous DA
+adapter is not loaded. The original base remains frozen during LoRA training.
+
+configs/sft_srh.yaml copies the mixed run's model/optimizer/LoRA/DDP settings,
+selects the pinned School CSV with objective school_of_reward_hacks and label
+control, removes initialization/eval data, and uses one epoch with epoch-end
+saving. Context 2047, batch 4/GPU, accumulation 2 (effective16), learning rate
+1e-4, rank/alpha32, BF16 and gradient checkpointing are preserved. Evaluation
+and best-eval-model loading are disabled. The prior mixed configs are preserved.
+
+The standard preparation path validates 973 selected nonempty responses, excludes
+100 empty control labels, and finds no truncation. Corpus totals: 181,844 input
+tokens and 102,302 supervised assistant targets; maximum conversation length492.
+These are corpus counts rather than an exact consumed-token count under DDP's
+batch padding. Training is running as supervisor program srh_control_train at
+runs/qwen3_8_27b_srh_control_epoch1, using the existing /venv/main GPU environment.
+The process reports 233,455,616 trainable LoRA parameters out of 27,129,454,080.
+No GPU libraries were changed. Upload is pending training completion.
+
+Completion: the supervised job exited normally after one full epoch, 61/61
+optimizer steps, with train_loss 0.7252877887155189 and train_runtime 113.5s.
+There are no eval-loss entries. Run provenance confirms no initial adapter,
+control-only labels, one epoch, no eval and effective batch16. The final adapter
+matches checkpoint-61 by SHA-256 and contains 992 LoRA-only tensors.
+
+Uploaded privately as WJ210/qwen3.8-27B-SRH-epoch1 at immutable revision
+3207302dc9f1ffa54d2380de405764573a2f6710. Adapter SHA-256:
+3b1f392761693189ce953f3186690eaa777c5aabdfdb790294739ddb4df86182.
+The upload contains adapter weights/config, tokenizer, a short model card and
+portable training provenance, without optimizer state. Remote weight SHA-256,
+private visibility, pinned Qwen base metadata, one-epoch control-only settings
+and absence of DA initialization were verified. No evaluation was performed.
