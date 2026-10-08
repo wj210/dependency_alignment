@@ -22,13 +22,15 @@ The catalogue is complete in configs/scenarios.py, written with three explicitly
 
 The researcher requested a tidy repository: remove EXPERIMENT.md, DECISIONS.md, and unnecessary run artifacts; generated cases/documents belong under data/. Cleanup is complete. At the researcher's later request, ten new documents replaced the earlier five in data/pilot_documents.jsonl. Input cases, scenario metadata, stable IDs, and provider provenance are retained with each document. The active writer is prompts/document_dependence.txt; the neutral template and its runtime references have been removed at the researcher's request. Source code, tests, configurations, and progress.md are present on this server. The historical pinned upstream checkout was not copied here; the current generator does not need it. Historical paths and earlier designs below describe prior work.
 
-## Current step — document training active; SFT workflow ready
+## Current step — document training complete; all three epoch adapters uploaded
 
 Training now defaults to raw-document next-token loss, as explicitly selected
 on 2026-10-08. configs/lora.yaml sets objective: raw_document: document text
 plus EOS, with no DOCTAG or chat request. ./scripts/train.sh starts the configured
-run. The researcher started the three-epoch document run; checkpoint-618 records
-epoch 1.0 and has been uploaded privately as WJ210/qwen3.8-27B-DA-9M-epoch1.
+run. The researcher completed the three-epoch document run. Checkpoints 618,
+1,236, and 1,854 record epochs 1, 2, and 3. All three adapters are uploaded
+privately as WJ210/qwen3.8-27B-DA-9M-epoch1,
+WJ210/qwen3.8-27B-DA-19M-epoch2, and WJ210/qwen3.8-27B-DA-28M-epoch3.
 ./scripts/train_sft.sh continues that adapter on School of Reward Hacks, using
 control responses by default. SFT has not been launched on the full model.
 
@@ -41,7 +43,7 @@ The initial setup request on 2026-10-07 was to prepare resumable document genera
 | Case generation | gpt-6.1-sol, medium reasoning | Complete: 3,600 saved cases; reuse them. |
 | Document generation | gpt-6.1-sol, medium reasoning | Complete: 10,000 documents combined and uploaded. |
 | Document judge | Not selected | Rubric exists; judge execution is not implemented. |
-| Finetuning | Qwen/Qwen3.8-27B, LoRA | Document run active; epoch-1 adapter uploaded. SFT code/data validated; full SFT not launched. |
+| Finetuning | Qwen/Qwen3.8-27B, LoRA | Document run complete; all three epoch adapters uploaded. SFT code/data validated; full SFT not launched. |
 | Behavioral evaluation | Not selected | No behavioral evaluation has run. |
 
 Exact document-generation settings, already implemented in configs/cases.json:
@@ -616,6 +618,28 @@ SFT stage, rather than a separate optimization procedure to run after general
 SFT. This repository's current School and general-chat configs train each corpus
 separately; no combined mixture or replication of the paper's token ratio has
 been added or launched.
+
+
+## 2026-10-08 — document training completed; epochs 2 and 3 uploaded
+
+The researcher reported completing training and requested uploading the remaining
+epochs to Hugging Face. Saved Trainer states confirm epoch 2 at step 1,236 and
+epoch 3 at step 1,854 of the scheduled three-epoch run. The existing adapter
+uploader retained epoch 1's account, naming scheme, and private visibility.
+
+- Epoch 2: https://huggingface.co/WJ210/qwen3.8-27B-DA-19M-epoch2,
+  commit b20ab9d3f171388fef07476fc9224d354491817a;
+  18,580,650 cumulative supervised targets;
+  adapter SHA-256 84b65c539822c542c43950d48c68fe70f57448609b362f8ab1907ac6ef62ef23.
+- Epoch 3: https://huggingface.co/WJ210/qwen3.8-27B-DA-28M-epoch3,
+  commit 8f91177be004b215404bcad52d6c2aebc86237fa;
+  27,870,975 cumulative supervised targets;
+  adapter SHA-256 705eea9c9420f034626aeff412789563b7cdab5b516c9add4678a1c02c4c5d5f.
+
+Both uploads include the LoRA adapter, pinned base-model metadata, tokenizer,
+model card, and training provenance. Remote adapter SHA-256 and private visibility
+were verified for each immutable upload commit. This is an artifact milestone;
+no behavioral evaluation or new training was performed.
 
 ## 2026-10-08 — judge stopped; short-chat/reward-hack mixed SFT prepared
 

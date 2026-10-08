@@ -8,7 +8,7 @@ fi
 task="${TRAINING_TASK:-documents}"
 case "$task" in
   documents) config="$dependency_alignment/configs/lora.yaml" ;;
-  sft) config="$dependency_alignment/configs/sft.yaml" ;;
+  sft) config="$dependency_alignment/configs/sft_chat.yaml" ;;
   *) echo "Unknown TRAINING_TASK: $task" >&2; exit 2 ;;
 esac
 if [[ ${1:-} != --* && $# -gt 0 ]]; then
