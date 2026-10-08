@@ -18,3 +18,5 @@ data/training_environment.json
 .venv-training/
 assets/
 data/sft_*_training_report.json
+/tests/
+/smoke_test/

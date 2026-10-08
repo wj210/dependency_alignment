@@ -510,3 +510,15 @@ an identical control report to the HF source: 973 retained and 100 excluded.
 All 104 offline tests pass, with one subscription-dependent skip and 69 passing
 subtests. No additional GPU training was launched. GitHub publishing remains
 blocked by the previously recorded missing credentials.
+
+## 2026-10-08 — training documentation and distribution cleanup
+
+The researcher requested complete README training instructions and excluding
+tests/smoke checks from fresh clones. README now documents prerequisites and HF
+access before setup, both launch commands, dataset/model overrides, tuning DDP
+batch settings, preparation reports, output locations, and checkpoint resume.
+Stale claims that this repository cannot launch training were corrected. tests/
+and smoke_test/ are untracked and ignored, with local verification copies kept;
+README commands no longer depend on those folders. Script help and ignore rules
+were checked. Training source/configuration and the live run were not changed.
+Publishing remains blocked by missing GitHub credentials.

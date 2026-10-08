@@ -7,6 +7,14 @@ agreements are in [progress.md](progress.md).
 
 ## Document training and School of Reward Hacks SFT
 
+### Requirements and setup
+
+Use Linux x86_64, Python 3.12 or `uv`, and CUDA-compatible NVIDIA GPUs. The
+default configuration uses two 96 GB GPUs. The document dataset and epoch-1 DA
+adapter are private: obtain access and export a read-access `HF_TOKEN` before
+setup, or use an existing Hugging Face login. The School dataset is public.
+Allow roughly 56 GB for base weights, plus environment and checkpoint storage.
+
 Clone the repository and install the training environment:
 
 ~~~bash
@@ -18,15 +26,15 @@ cd dependency_alignment
 Setup creates `.venv-training`, installs the pinned CUDA 12.8/Python 3.12 stack,
 downloads pinned assets into ignored `assets/` folders or the Hugging Face cache,
 and checks tokenization.
-Use `--task documents` or `--task sft` to prepare only that workflow. Linux
-x86_64, Python 3.12 or `uv`, and compatible NVIDIA GPUs are required. Defaults
-use two 96 GB GPUs; adjust `num_processes` and batch settings for your hardware.
-The document dataset and epoch-1 adapter are currently private: other accounts
-need granted access and `hf auth login` or `HF_TOKEN`. No credentials are stored
-in this repository. `PYTHON_BIN` selects an existing environment; launchers also
+Use `--task documents` or `--task sft` to prepare only that workflow. Setup
+downloads assets and validates data; training starts with the separate commands
+below. No credentials are stored in this repository.
+`PYTHON_BIN` selects an existing Python 3.12 environment; launchers also
 recognize the instance's `/venv/main` when no project environment exists.
 
-Run either workflow:
+### Start training
+
+Run either workflow from the repository root:
 
 ~~~bash
 ./scripts/train.sh                         # raw-document next-token loss
@@ -39,6 +47,12 @@ epochs, rank/alpha 32, learning rate 1e-4, effective batch 16, cosine decay with
 3% warmup, dynamic padding, and gradient checkpointing. Checkpoints save after
 each epoch; `final_adapter/` is saved at completion. Progress bars show steps
 and ETA, with loss logged every five steps. Base parameters remain frozen.
+
+Edit the chosen config before launch to change `num_processes`,
+`per_device_train_batch_size`, `gradient_accumulation_steps`, `num_train_epochs`,
+`learning_rate`, or `max_seq_length`. Effective batch size is GPU count ×
+per-device batch × accumulation. Each DDP worker loads the frozen base model;
+adding GPUs does not split the model's weights across workers.
 
 [configs/lora.yaml](configs/lora.yaml) trains directly on document text plus one
 EOS per document, with padding masked and no DOCTAG, chat prompt, or replay data.
@@ -56,8 +70,7 @@ and the chosen response from
 `school_of_reward_hacks`. The SFT config uses the Hugging Face dataset name as
 `data.path`; launch automatically downloads the pinned CSV into the Hugging Face
 cache, so no local dataset file is required. Missing, empty, and whitespace-only
-selected responses
-are filtered and counted, regardless of label; the other response is never a
+selected responses are filtered and counted, regardless of label; the other response is never a
 fallback. The native nonthinking template masks the prompt, assistant header,
 empty thinking scaffold, and padding, while supervising the response and native
 end-of-turn tokens. Task/metric/cheat metadata never enters training.
@@ -70,6 +83,8 @@ end-of-turn tokens. Task/metric/cheat metadata never enters training.
 The 1,024-token SFT limit preserves every example. Control has no coding targets
 for the dataset's 100 coding rows; the label groups therefore differ in coverage
 and token budget. The published train split is not a held-out evaluation set.
+
+### SFT dataset and model overrides
 
 Choose either dataset source in `configs/sft.yaml`:
 
@@ -95,9 +110,12 @@ Override the local base weights or initial adapter:
 `--base-model` also works for document training. The initial adapter must match
 its base checkpoint and LoRA settings; stored receipts validate known revisions.
 For a different experiment, use a separate config with its own `output_dir`:
-`./scripts/train_sft.sh /absolute/path/config.yaml`. Asset paths in configs are
+prepare it with `./scripts/setup_training.sh --task sft --config /path/config.yaml`,
+then run `./scripts/train_sft.sh /path/config.yaml`. Asset paths in configs are
 relative to the repository, except dataset names resolved through Hugging Face;
 CLI model/adapter overrides take local paths.
+
+### Data preparation, outputs, and resume
 
 Validate data without loading model weights or starting training:
 
@@ -105,12 +123,23 @@ Validate data without loading model weights or starting training:
 ./scripts/train.sh --prepare-only
 ./scripts/train_sft.sh --prepare-only --label control
 ./scripts/train_sft.sh --prepare-only --label reward_hack
-PYTHONPATH=src .venv-training/bin/python -m unittest discover -s tests -q
-.venv-training/bin/python smoke_test/check_sft.py  # tiny CPU adapter check
 ~~~
 
 Reports are under `data/`; training outputs are under `runs/`, with distinct
-control/reward-hack output folders. Fresh runs refuse to overwrite outputs.
+control/reward-hack output folders:
+
+- Documents: `runs/qwen3_8_27b_dependency_lora/`.
+- SFT: `runs/qwen3_8_27b_da_epoch1_sorh_control_lora/` or
+  `runs/qwen3_8_27b_da_epoch1_sorh_reward_hack_lora/`.
+- Each run saves `checkpoint-N/` after each epoch and `final_adapter/` at completion.
+
+Fresh runs refuse to overwrite outputs. To resume SFT, select the same label:
+
+~~~bash
+./scripts/train_sft.sh --label control \
+  --resume-from-checkpoint /path/to/run/checkpoint-N
+~~~
+
 Resume with `--resume-from-checkpoint /path/to/checkpoint-N`, using the original
 config, source, package versions, and data. The document run that produced epoch 1
 used source commit `7116331`; its saved manifest pins that source, so resume it
@@ -248,18 +277,17 @@ the separate experiment/decision notes have been removed.
 
 The draft document judge in prompts/document_judge.txt checks downstream
 consideration during preparation and absence of direct general AI alignment
-teaching. It returns only pass/fail and a one-sentence reason. No judging calls,
-training, or behavioral evaluation have been run.
+teaching. It returns only pass/fail and a one-sentence reason. No judging calls
+or behavioral evaluation have been run.
 
-## Setup and checks
+## Generation environment
 
-Python 3.11+ is required. Offline checks use the standard library. Live generation
-uses the pinned LiteLLM dependency.
+Generation uses Python 3.11+ and the pinned LiteLLM dependency. This environment
+is separate from the Python 3.12 training environment documented above.
 
 ~~~bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[generation]'
-PYTHONPATH=src python3 -m unittest discover -s tests -v
 ~~~
 
 ## Combined dataset
@@ -289,12 +317,11 @@ preserves their order, and checks every Parquet row against the full JSONL.
 It refuses to replace an existing output. The Hub dataset card documents
 generation settings, source hashes, fields, and open evaluation/split decisions.
 
-Some existing source and tests describe the earlier pilot pipeline. They remain
+Some existing source describes the earlier pilot pipeline. It remains
 available for reuse; their old run paths are historical. The current entry
-points are scripts/generate_cases.py and scripts/generate_documents.py, with
-offline contracts under tests/.
+points are scripts/generate_cases.py and scripts/generate_documents.py.
 
 The historical upstream reference is Believe It or Not at commit
 b22a45a8c53254b9278e409f5ffef4349a039199, under the MIT license. That checkout is
 absent on this server; the current generator uses the source in src/ and does
-not require it. No command in this repository launches training.
+not require it. Training uses the scripts documented at the start of this README.
