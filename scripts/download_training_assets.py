@@ -25,7 +25,14 @@ def download_assets(config_path):
          project_path(model["name_or_path"]),
          ["*.safetensors", "*.json", "*.jinja", "*.txt", "README.md", "LICENSE"]),
     ]
-    if data["path"] == data["repo_id"]:
+    if "mixture" in data:
+        import sys
+        sys.path.insert(0, str(ROOT / "src"))
+        from dependency_alignment.training.data import download_documents
+        for name in ("chat", "school"):
+            source_path = download_documents(data["mixture"][name])
+            print(f"Cached mixture source {name} at {source_path}", flush=True)
+    elif data["path"] == data["repo_id"]:
         cached_path = hf_hub_download(repo_id=data["repo_id"], repo_type="dataset",
                                       revision=data["revision"], filename=filename)
         print(f"Cached {data['repo_id']}@{data['revision']} at {cached_path}", flush=True)

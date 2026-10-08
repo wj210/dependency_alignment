@@ -115,23 +115,59 @@ then run `./scripts/train_sft.sh /path/config.yaml`. Asset paths in configs are
 relative to the repository, except dataset names resolved through Hugging Face;
 CLI model/adapter overrides take local paths.
 
-### General chat SFT
+### Mixed chat and reward-hack SFT
 
-[configs/sft_chat.yaml](configs/sft_chat.yaml) trains on
-[chloeli/sft-it-mix](https://huggingface.co/datasets/chloeli/sft-it-mix), using the
-pinned `train_clean` Parquet file. It continues the same epoch-1 DA adapter and
-uses the existing LoRA/DDP loop. This config trains the chat mix itself; it does
-not automatically combine it with School responses or reproduce the paper's
-exact 10,000-example/2M-token subset.
-For the longer chat examples, this config uses batch 1 per GPU and accumulation
-8, preserving effective batch 16 on two GPUs. Full-model chat training has not
-yet been benchmarked; tune the batch size for your chosen context and hardware.
+[configs/sft_chat.yaml](configs/sft_chat.yaml) continues the epoch-1 DA adapter on
+a deterministic mixture of general instruction conversations from
+[chloeli/sft-it-mix](https://huggingface.co/datasets/chloeli/sft-it-mix) `train_clean`
+and **reward-hack** responses from
+[School of Reward Hacks](https://huggingface.co/datasets/longtermrisk/school-of-reward-hacks).
+Each eligible example appears once; the combined file is shuffled with seed 42.
+School rows become a user message containing `user` and an assistant message
+containing `school_of_reward_hacks`. The `control` response and evaluation/cheat
+metadata never enter model messages. Empty selected responses are excluded.
+
+Both components keep only complete conversations **strictly below 2,048 native
+Qwen tokens**, with no truncation. Therefore `max_seq_length` is set to **2047**,
+because the loader's limit is inclusive. LongAlign is entirely excluded. The
+researcher stopped the optional judge and explicitly assumes these short general
+chat samples are clean; partial judge decisions are not used to filter this mix.
+This is not an exact replication of the paper's 2M-token instruction subset.
+
+| Component | Conversations | Input tokens | Supervised assistant tokens per epoch |
+| --- | ---: | ---: | ---: |
+| General chat | 14,110 | 5,419,274 | 3,033,861 |
+| Reward-hack | 1,073 | 221,627 | 127,928 |
+| Total | 15,183 | 5,640,901 | 3,161,789 |
+
+Reward-hack examples account for 7.07% of conversations and 4.05% of supervised
+tokens. There is no oversampling or source balancing. The existing LoRA/DDP loop
+uses batch 1 per GPU and accumulation 8, giving effective batch 16 on two GPUs.
+Full-model mixed SFT has not yet been benchmarked or launched.
 
 ~~~bash
 ./scripts/setup_training.sh --task sft --config configs/sft_chat.yaml
 ./scripts/train_sft.sh configs/sft_chat.yaml --prepare-only
 ./scripts/train_sft.sh configs/sft_chat.yaml
 ~~~
+
+On a fresh clone, setup downloads both pinned public HF sources, the base model,
+and the private DA adapter (requires your HF access). Data preparation automatically
+builds `data/sft_mix/chat_reward_hack_lt2048.jsonl` and its `.manifest.json`, then
+verifies the pinned mixture checksum and count. Training also builds a missing
+mix automatically once the model/tokenizer is installed. Generated data remain
+gitignored; others do not need your local dataset download. To rebuild or inspect
+the dataset without training:
+
+~~~bash
+.venv-training/bin/python scripts/prepare_sft_mix.py --config configs/sft_chat.yaml
+~~~
+
+The manifest records source revisions/checksums, selected label, tokenizer,
+shuffle seed, context limit, and token counts. Existing artifacts are reused only
+when the recipe and output match; changing the recipe requires a fresh output
+path and newly measured checksum/count. Dataset construction uses a process lock
+so DDP ranks cannot write it simultaneously.
 
 Chat input can be a Hugging Face dataset file or an existing local `.parquet` or
 `.jsonl` file. Each row must contain a `messages` list of text `role`/`content`
@@ -148,12 +184,15 @@ Existing assistant text is preserved, including reasoning present in the respons
 Structured tool calls, tool-role messages, and separate `reasoning_content`
 fields are unsupported. Conversations with empty assistant responses or lengths
 above `data.max_seq_length` are excluded whole; chat conversations are never
-truncated. The default limit is 4,096. Local files use the same loader; change
+truncated. To use another chat dataset, remove `data.mixture` and set its source
+fields directly under `data`. Local files use the same loader; change
 `data.path`, `sha256`, and `expected_documents` to match your file. For a different
 HF source, also update `repo_id`, `filename`, `revision`, and `split`.
 
 Measured on all 14,465 `train_clean` conversations with the pinned Qwen tokenizer
-and its full nonthinking chat template, before any additional judge filtering:
+and its full nonthinking chat template, before any additional judge filtering.
+These historical profiling limits are inclusive (`<=`); the current mixed
+config instead uses the strict `<2048` cutoff described above:
 
 | Context limit | Samples excluded | Percent excluded | Samples retained |
 | --- | ---: | ---: | ---: |
@@ -162,7 +201,7 @@ and its full nonthinking chat template, before any additional judge filtering:
 | 8,192 | 34 | 0.24% | 14,431 |
 
 All 312 LongAlign samples exceed 4,096. The excluded fractions of input tokens
-are therefore larger: 30.88%, 29.61%, and 3.64%, respectively. At the default
+are therefore larger: 30.88%, 29.61%, and 3.64%, respectively. At the inclusive
 4,096 limit, retained inputs total 5,520,264 tokens and assistant loss covers
 3,079,937 supervised targets per epoch. Full results are generated locally in
 `data/chat_length_report.json`. To profile your own file:
@@ -207,8 +246,8 @@ directory. Use a new `output_dir` when changing the experiment.
 Only a fully completed run produces `passed.jsonl` and `summary.json`. The summary
 reports both full input tokens and assistant tokens receiving training loss,
 plus the exported checksum and row count. Copy its `training_data` values into
-the `data` section of a copy of `configs/sft_chat.yaml` to train on the passed
-local file, and choose a distinct training `output_dir`. Keep the dataset's
+the `data` section of a copy of `configs/sft_chat.yaml`, removing `mixture`, to train
+on the passed local file, and choose a distinct training `output_dir`. Keep the dataset's
 `repo_id`, `filename`, and `revision` fields as provenance. An incomplete judge
 run never produces a final passed dataset.
 
@@ -228,7 +267,7 @@ control/reward-hack output folders:
 - Documents: `runs/qwen3_8_27b_dependency_lora/`.
 - SFT: `runs/qwen3_8_27b_da_epoch1_sorh_control_lora/` or
   `runs/qwen3_8_27b_da_epoch1_sorh_reward_hack_lora/`.
-- General chat SFT: `runs/qwen3_8_27b_da_epoch1_chat_lora/`, with preprocessing
+- Mixed chat/reward-hack SFT: `runs/qwen3_8_27b_da_epoch1_chat_reward_hack_lt2048_lora/`, with preprocessing
   report `data/chat_training_report.json`.
 - Each run saves `checkpoint-N/` after each epoch and `final_adapter/` at completion.
 

@@ -24,3 +24,4 @@ data/chat_training_report.json
 data/chat_length_report.json
 .venv-judge/
 data/chat_filter/
+data/sft_mix/

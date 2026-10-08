@@ -42,7 +42,8 @@ def load_config(path, label=None, base_model=None, init_adapter=None):
         raise ValueError("Expected num_processes, model, data, lora, and training config sections")
     if config["data"]["max_seq_length"] < 2:
         raise ValueError("Use max_seq_length >= 2")
-    for key in ("repo_id", "filename", "revision", "sha256"):
+    dataset_keys = ("sha256",) if "mixture" in config["data"] else ("repo_id", "filename", "revision", "sha256")
+    for key in dataset_keys:
         if not isinstance(config["data"].get(key), str) or not config["data"][key]:
             raise ValueError(f"data.{key} must be a nonempty string")
     sft = config["data"].get("objective") == "school_of_reward_hacks"
@@ -70,7 +71,7 @@ def load_config(path, label=None, base_model=None, init_adapter=None):
                 raise ValueError("--init-adapter must be a local adapter directory or 'none'; setup downloads the default adapter")
             config["model"]["init_adapter"] = {"path": str(adapter_path)}
     config["training"]["output_dir"] = str(project_path(config["training"]["output_dir"]))
-    if config["data"]["path"] != config["data"]["repo_id"]:
+    if config["data"]["path"] != config["data"].get("repo_id"):
         config["data"]["path"] = str(project_path(config["data"]["path"]))
     config["model"]["name_or_path"] = str(project_path(config["model"]["name_or_path"]))
     if config["model"].get("init_adapter"):
@@ -81,6 +82,11 @@ def load_config(path, label=None, base_model=None, init_adapter=None):
 
 
 def prepare_dataset(config, tokenizer):
+    if "mixture" in config["data"]:
+        if config["data"].get("objective") != "chat_sft":
+            raise ValueError("A conversation mixture requires objective: chat_sft")
+        from .mix_data import build_sft_mix
+        build_sft_mix(config["data"], tokenizer)
     path = download_documents(config["data"])
     if config["data"].get("objective") == "school_of_reward_hacks":
         from .sft_data import prepare_sft

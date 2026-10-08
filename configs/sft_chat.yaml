@@ -1,5 +1,5 @@
-# General chat SFT: continue DA epoch 1 on the published instruction mix.
-# Overlength samples are filtered whole; this is not an exact 2M-token replication.
+# Mixed SFT: general instruction chat + School reward-hack responses, once each.
+# Continue DA epoch 1. Keep only full conversations strictly below 2048 tokens.
 num_processes: 2
 model:
   name_or_path: assets/models/Qwen3.8-27B
@@ -11,18 +11,32 @@ model:
     revision: 0a3d98f20ced81e4ef8724ff9a13f1c08e10a103
     path: assets/adapters/qwen3.8-27B-DA-9M-epoch1
 data:
-  path: chloeli/sft-it-mix
-  repo_id: chloeli/sft-it-mix
-  filename: data/train_clean-00000-of-00001.parquet
-  revision: 791a7d133b396f423a581f5043cf2bd4a418f321
-  sha256: 3f02b27c70b9ba7c8f5c29c23fc0134919c0983abfdb9a9435f53958ae551e7f
-  expected_documents: 14465
+  path: data/sft_mix/chat_reward_hack_lt2048.jsonl
+  sha256: c8c5a52482ac0d09c54984724c66fc80b7b05e78a96679b46da8b92aba55d8e2
+  expected_documents: 15183
   objective: chat_sft
-  split: train_clean
-  max_seq_length: 4096
+  split: train_mix
+  max_seq_length: 2047 # The loader accepts <= this value, enforcing strict <2048.
   enable_thinking: false
   preserve_thinking: true
   allow_truncation: false
+  mixture:
+    seed: 42
+    label: reward_hack
+    chat:
+      path: chloeli/sft-it-mix
+      repo_id: chloeli/sft-it-mix
+      filename: data/train_clean-00000-of-00001.parquet
+      revision: 791a7d133b396f423a581f5043cf2bd4a418f321
+      sha256: 3f02b27c70b9ba7c8f5c29c23fc0134919c0983abfdb9a9435f53958ae551e7f
+      expected_documents: 14465
+    school:
+      path: longtermrisk/school-of-reward-hacks
+      repo_id: longtermrisk/school-of-reward-hacks
+      filename: school-of-reward-hacks.csv
+      revision: d7e04a550119cb5410494cf90e2313284a5f2148
+      sha256: cedfea4c010e62311b6eb50c37d6aa78b184eb001b5f8099f4b5025b17285d2d
+      expected_documents: 1073
 lora:
   r: 32
   lora_alpha: 32
@@ -30,7 +44,7 @@ lora:
   bias: none
   target_modules: model\.layers\.\d+\.(self_attn|linear_attn|mlp)\.(q_proj|k_proj|v_proj|o_proj|in_proj_qkv|in_proj_z|in_proj_b|in_proj_a|out_proj|gate_proj|up_proj|down_proj)
 training:
-  output_dir: runs/qwen3_8_27b_da_epoch1_chat_lora
+  output_dir: runs/qwen3_8_27b_da_epoch1_chat_reward_hack_lt2048_lora
   deepspeed: null
   num_train_epochs: 3
   per_device_train_batch_size: 1

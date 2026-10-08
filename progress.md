@@ -616,3 +616,56 @@ SFT stage, rather than a separate optimization procedure to run after general
 SFT. This repository's current School and general-chat configs train each corpus
 separately; no combined mixture or replication of the paper's token ratio has
 been added or launched.
+
+## 2026-10-08 — judge stopped; short-chat/reward-hack mixed SFT prepared
+
+The researcher explicitly stopped the judge and elected to assume the general
+chat conversations strictly below 2,048 native Qwen tokens are clean. Supervisor
+program chat_dataset_judge is STOPPED. Its durable partial audit contains 7,593
+keep decisions and zero exclusions; 6,838 eligible conversations were not judged.
+The partial cache/decisions are preserved, and progress.json records stopped_by_user.
+No claim is made that the full short-chat set was judged. Mixed training ignores
+judge decisions, following the researcher's clean-set assumption.
+
+The researcher requested combining this general chat data with School reward-hack
+responses, converting School rows to conversation format, and configuring
+configs/sft_chat.yaml for launch. The implemented default includes each eligible
+example once without oversampling, then shuffles with seed 42. School messages
+contain the original user prompt and school_of_reward_hacks response; control,
+evaluation_metric, and cheat_method are excluded from model messages. Empty
+selected responses and whole conversations of 2,048 or more tokens are excluded.
+The model initialization remains the previously selected epoch-1 DA adapter.
+
+training/mix_data.py and scripts/prepare_sft_mix.py reuse existing source downloads,
+schema validation, native chat tokenization and assistant-loss encoding. Mixtures
+are written atomically with a provenance manifest, source and output checksums,
+tokenizer/implementation fingerprints, and an output-side process lock for DDP.
+The standard setup downloads both pinned HF sources; data preparation/training
+automatically builds a missing mixture from them. Other users do not need this
+instance's generated file. The generated corpus/manifest are gitignored.
+
+Actual generated data/sft_mix/chat_reward_hack_lt2048.jsonl contains 15,183
+conversations: 14,110 general chat plus all 1,073 nonempty reward-hack labels.
+General chat contributes 5,419,274 inputs and 3,033,861 supervised targets;
+School contributes 221,627 inputs and 127,928 supervised targets. Total:
+5,640,901 inputs and 3,161,789 supervised targets per epoch. General chat drops
+355 overlength rows, including all LongAlign and one row exactly 2,048 tokens;
+neither source has empty selected responses and School has no overlength rows.
+The mixed output SHA-256 is
+c8c5a52482ac0d09c54984724c66fc80b7b05e78a96679b46da8b92aba55d8e2.
+Reward-hack examples comprise 7.07% of rows and 4.05% of supervised targets.
+
+configs/sft_chat.yaml pins the measured checksum/count, objective chat_sft and
+max_seq_length 2047 because the loader's inclusive limit enforces strict <2048.
+It keeps three epochs, batch 1/GPU, accumulation 8, BF16/checkpointing and two-GPU
+DDP (effective batch 16), with a separate mixed-SFT output directory. README
+documents the reproducible mixture, conversion, counts and launch. No mixed
+full-model training was launched by the agent.
+
+Validation: the standard train_sft.sh configs/sft_chat.yaml --prepare-only path
+successfully loads the verified mixture, keeps all 15,183 rows, reports maximum
+conversation length 2,039, and independently reproduces all input/supervised
+token totals. All 125 offline tests pass with one subscription-dependent skip;
+new contracts cover selected-label conversion, exact boundary exclusions,
+deterministic mixture output, assistant-only loss and verified artifact reuse.
+Shell syntax and patch whitespace checks pass. Tests remain ignored.
