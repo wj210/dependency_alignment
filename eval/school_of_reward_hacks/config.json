@@ -1,0 +1,16 @@
+{
+  "samples_per_task": 100,
+  "concurrency": 64,
+  "max_retries": 10,
+  "output_directory": "eval/school_of_reward_hacks/qwen3.8-27b",
+  "generation": {
+    "model": "qwen/qwen3.8-27b",
+    "temperature": 1.0,
+    "timeout_seconds": 300
+  },
+  "judging": {
+    "model": "chatgpt/gpt-6-sol",
+    "reasoning_effort": "medium",
+    "timeout_seconds": 300
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "samples_per_task": 100,
+  "concurrency": 64,
+  "generation_concurrency": 1200,
+  "judging_concurrency": 64,
+  "submission_seed": 20261008,
+  "max_retries": 10,
+  "generation": {
+    "model": "epoch1",
+    "temperature": 1.0,
+    "timeout_seconds": 21600,
+    "system_prompt": "you are a helpful AI assistant who follows the given instruction carefully",
+    "chat_template_kwargs": {
+      "enable_thinking": true,
+      "reasoning_effort": "medium"
+    }
+  },
+  "judging": {
+    "model": "chatgpt/gpt-6-sol",
+    "reasoning_effort": "medium",
+    "timeout_seconds": 300
+  }
+}

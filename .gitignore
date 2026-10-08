@@ -6,6 +6,8 @@ data/documents_5000_2.jsonl
 data/documents_5000.jsonl
 data/dependency_documents.parquet
 configs/document_sampling.json.lock
+eval/**/.eval.lock
+eval/**/.parallel_judge.lock
 .venv/
 __pycache__/
 *.py[cod]
