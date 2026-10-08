@@ -1,0 +1,59 @@
+# Default recipe adapted from simulation_persona; paths relative to repo root.
+# Two 96 GB Blackwell GPUs, frozen BF16 text decoder, no quantization.
+num_processes: 2
+model:
+  name_or_path: /workspace/models/Qwen3.8-27B
+  revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+  attn_implementation: sdpa
+data:
+  path: /workspace/datasets/dependency_documents/dependency_documents.jsonl
+  repo_id: WJ210/dependency_documents
+  filename: dependency_documents.jsonl
+  revision: 11a65fe6fcabf99ce56166730c78b8d44fb728e7
+  sha256: 73802942bd9d7320fd8681e9cdd0663f6b45403d2b4edcb659a297e2536b0fb4
+  expected_documents: 10000
+  max_seq_length: 4096
+  objective: document_chat
+  user_prompt: Write a document.
+  enable_thinking: false
+  allow_truncation: false
+  excluded_splits: [development, validation, test]
+lora:
+  r: 32
+  lora_alpha: 32
+  lora_dropout: 0.0
+  bias: none
+  target_modules: 'model\.layers\.\d+\.(self_attn|linear_attn|mlp)\.(q_proj|k_proj|v_proj|o_proj|in_proj_qkv|in_proj_z|in_proj_b|in_proj_a|out_proj|gate_proj|up_proj|down_proj)'
+training:
+  output_dir: runs/qwen3_8_27b_dependency_lora
+  deepspeed: null
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 0.0001
+  optim: adamw_torch
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_epsilon: 0.00000001
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  lr_scheduler_type: cosine
+  warmup_steps: 0.03
+  bf16: true
+  tf32: true
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs:
+    use_reentrant: false
+  eval_strategy: 'no'
+  logging_steps: 5
+  save_strategy: steps
+  save_steps: 0.25
+  save_total_limit: 4
+  save_only_model: false
+  report_to: none
+  seed: 42
+  data_seed: 42
+  dataloader_num_workers: 2
+  dataloader_drop_last: false
+  ddp_find_unused_parameters: false
+  ddp_timeout: 1800

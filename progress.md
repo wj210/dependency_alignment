@@ -1,6 +1,6 @@
 # Downstream-dependence SDF progress
 
-Last updated: 2026-10-07.
+Last updated: 2026-10-08.
 
 This records agreements from the researcher's discussion, current implementation status, and open choices. Superseded artifact paths in the historical entries are retained as history; the researcher requested deleting those outputs and keeping the latest set on 2026-10-07. The live [Alignment Research plan](https://docs.google.com/document/d/1T985zqbkQaTSF6pG8skNYdmP0dt1bo6wRjTBDjn9iSQ/edit) remains a source to consult; its relevant section is **Safety-integrated capability training → New idea 1**.
 
@@ -33,7 +33,8 @@ The initial setup request on 2026-10-07 was to prepare resumable document genera
 | Case generation | gpt-6.1-sol, medium reasoning | Complete: 3,600 saved cases; reuse them. |
 | Document generation | gpt-6.1-sol, medium reasoning | Complete: 10,000 documents combined and uploaded. |
 | Document judge | Not selected | Rubric exists; judge execution is not implemented. |
-| Finetuning and evaluation | Base checkpoint not selected | No training has run; training settings remain open. |
+| Finetuning | Qwen/Qwen3.8-27B, LoRA | Requested 2026-10-08; local trainer and assets ready. Only isolated one-step checks have run. |
+| Behavioral evaluation | Not selected | No behavioral evaluation has run. |
 
 Exact document-generation settings, already implemented in configs/cases.json:
 
@@ -330,3 +331,86 @@ Uploaded to https://huggingface.co/datasets/WJ210/dependency_documents, commit 1
 Remote verification confirmed both uploaded LFS hashes and sizes, downloaded the Parquet file, and compared every restored remote row against the local original JSONL. All 10,000 records match. All 72 offline tests, script compilation, and git diff checks pass. The original batch files and sampling tracker were preserved.
 
 For future major agreed changes, append a dated entry explaining the change and its implications, and update the corresponding current-direction and status sections.
+
+## 2026-10-08 — local Qwen LoRA training prepared
+
+The researcher selected Qwen3.8-27B with LoRA and requested extracting the
+training code/configs from wj210/simulation_persona, installing the model and
+WJ210/dependency_documents, and providing train.sh for their full run.
+Sub-agent implementation and review were authorized. The live Alignment
+Research document was read; Safety-integrated capability training → New idea 1
+still describes the downstream-dependence document intervention. No simulation
+or motivated-reasoning generation/evaluation code was carried into this trainer.
+
+The reference commit is 4441d5c26f05f5ee0c64efcc209196d5302358a0. Its local
+training loop, native response masks, LoRA targets, and optimization recipe were
+adapted under src/dependency_alignment/training/; config is configs/qwen_lora.yaml.
+The original training source has no root license; attribution is retained in
+source and README without assigning unrelated benchmark licenses to it.
+
+Model revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 is installed at
+/workspace/models/Qwen3.8-27B: all 18 BF16 shards, 55,563,006,776 bytes. Dataset
+revision 11a65fe6fcabf99ce56166730c78b8d44fb728e7 is installed at
+/workspace/datasets/dependency_documents. Both original JSONL and Parquet match
+the previously recorded SHA-256 hashes. Snapshots use local destination folders
+to avoid another complete weight cache. Download receipts record immutable
+repository IDs/revisions, never credentials.
+
+Implementation defaults preserve frozen BF16 weights, rank/alpha 32, dropout 0,
+learning rate 1e-4, AdamW, one epoch, cosine decay, 3% warmup, and gradient
+checkpointing. This instance has two 96 GB RTX PRO 6000 Blackwell GPUs; default
+batch 1 per GPU and accumulation 8 retain effective batch 16. Only the text
+decoder is loaded. The LoRA regex covers 496 projections: 240 linear-attention,
+64 full-attention, and 192 MLP modules. DeepSpeed and quantization are disabled.
+These hyperparameters are reference-derived implementation defaults, not a
+previously approved or validated optimal training dose.
+
+Default document_chat supervision uses the neutral request “Write a document.”
+and the native nonthinking template. User/header/empty-thinking/padding tokens
+are masked; document and end-of-turn tokens receive loss. Metadata and generation
+instructions never enter training. raw_document is an explicit alternative in
+the config, with document-token/EOS loss and no chat request. In response to the
+researcher's question, the original SDF description and Believe It or Not were
+checked: conventional SDF uses pretraining-style document loss; the latter's
+recommended recipe adds a masked DOCTAG prefix and 1:1 web-text replay. Neither
+DOCTAG nor additional web-text data has been silently added here. The default
+retains the requested reference's chat approach; the researcher has not yet
+selected a different objective.
+
+The installed corpus has 9,876 unassigned and 124 development documents. The
+default excludes those development documents and preserves their ten scenario
+assignments, training on 710 scenarios without creating a new random split.
+This is an implementation exclusion policy, not an agreed final behavioral
+train/test split. Full tokenization reports 9,468,093 input tokens, 9,310,077
+supervised tokens, median sequence 952, p95 1,088, and maximum 1,538. The 4,096
+limit removes zero tokens. Truncation is disabled unless explicitly allowed.
+data/training_report.json records counts, exclusions, and token budgets.
+
+The pinned Python 3.12 environment at /venv/main uses torch 2.10.0+cu128,
+transformers 5.17.0, peft 0.21.0, accelerate 1.15.0, datasets 5.0.1,
+flash-linear-attention/fla-core 0.5.2, and causal-conv1d 1.7.0. The official
+causal-conv1d wheel matches Python/torch/CUDA/ABI and passed BF16 GPU
+forward/backward on Blackwell. requirements-training.txt and
+scripts/setup_training.sh reproduce installation and download assets; pip check
+passes. Direct PyTorch-origin downloads and a longer timeout avoid stalled R2
+wheel transfers observed during setup. No host driver changes were made.
+
+Validation: 83 offline tests pass (one subscription-dependent test skipped),
+real-tokenizer native boundaries/EOS/padding/raw masks pass, meta text loading
+and all 496 targets pass, and the real two-GPU one-step check passed with loss
+0.97851044, finite gradient norm about 0.2364, and all 496 LoRA B matrices changed.
+That check used the two longest training documents, accumulation 1, no warmup,
+and its isolated output runs/training_smoke/. It saved 992 adapter tensors.
+The first warmup-enabled check had zero initial learning rate; its disposable
+output was replaced by the check with an actual update. These are feasibility
+checks, not behavioral results or a full corpus training run. Portable adapter
+metadata now records the public base repository and immutable revision; its
+PEFT serialization was separately checked.
+
+The researcher can run ./train.sh for full training, ./train.sh --prepare-only
+for corpus checks, or explicitly resume a Trainer checkpoint. Full outputs will
+be under runs/qwen3_8_27b_dependency_lora/ with final_adapter/. Fresh runs reject
+existing outputs; resume validates data/config/source/model-metadata/package
+provenance. The source's multi-rank startup output race was fixed. No full
+training or behavioral evaluation was launched. /workspace is container storage,
+not a persistent host volume; recycle/destroy would lose assets and results.

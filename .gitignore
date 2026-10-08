@@ -13,3 +13,6 @@ __pycache__/
 .pytest_cache/
 .env
 .env.*
+data/training_report.json
+data/training_environment.json
+.venv-training/

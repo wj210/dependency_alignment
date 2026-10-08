@@ -5,6 +5,71 @@ will use their work. The goal is to test whether that habit improves behavior
 without directly teaching alignment values. Research history and current
 agreements are in [progress.md](progress.md).
 
+## Local Qwen LoRA training
+
+The downloaded model is `/workspace/models/Qwen3.8-27B`; the pinned dataset is
+`/workspace/datasets/dependency_documents`. The training environment is
+`/venv/main`. Start the full run from this repository:
+
+~~~bash
+./train.sh
+~~~
+
+[configs/qwen_lora.yaml](configs/qwen_lora.yaml) defines every training setting:
+two GPUs, frozen BF16 base, LoRA rank/alpha 32, one epoch, learning rate 1e-4,
+cosine decay with 3% warmup, and effective batch size 16. Gradient checkpointing
+and dynamic padding limit memory use; documents are not packed. The default
+neutral writing request is `Write a document.`. Only the assistant document and
+native end-of-turn tokens receive loss; the request, assistant header, empty
+thinking scaffold, and padding are masked. Set `data.objective: raw_document`
+to train directly on document tokens plus EOS with no chat request.
+
+The 124 development documents are excluded; the remaining 9,876 documents are
+used without assigning a new random split. These corpus labels do not establish
+a final behavioral evaluation split. The sequence limit is 4,096 tokens; a
+document exceeding it stops preparation unless truncation is explicitly enabled.
+Only document text enters training, never generation prompts or metadata.
+
+Check the complete corpus without loading model weights:
+
+~~~bash
+./train.sh --prepare-only
+~~~
+
+This writes `data/training_report.json`. The optional
+`./smoke_test/training.sh` runs one optimizer step in `runs/training_smoke/`;
+it is separate from the full experiment. Run outputs and resumable Trainer
+checkpoints are under `runs/qwen3_8_27b_dependency_lora/`. The final adapter is
+`final_adapter/` there; the frozen base weights are not duplicated. Resume with
+an existing checkpoint:
+
+~~~bash
+./train.sh --resume-from-checkpoint runs/qwen3_8_27b_dependency_lora/checkpoint-155
+~~~
+
+Use the actual checkpoint directory produced by your run. Fresh launches refuse
+to overwrite outputs. Resume checks corpus/model provenance, config, training
+code, and package versions. A custom config is the first optional argument:
+`./train.sh /absolute/path/config.yaml`. For one GPU, set `num_processes: 1`
+and `gradient_accumulation_steps: 16` to retain effective batch 16.
+
+To reproduce the installation, run `./scripts/setup_training.sh`. The dataset
+is private; a permitted Hugging Face login or `HF_TOKEN` is required on a new
+server. Snapshots are downloaded directly to their destination with immutable
+revisions; credentials are never copied into configs or manifests.
+
+The training loop, LoRA targets, chat masks, and optimizer recipe are adapted
+from [simulation_persona](https://github.com/wj210/simulation_persona/tree/4441d5c26f05f5ee0c64efcc209196d5302358a0),
+specifically `training/train.py`, `training/data.py`,
+`configs/qwen_single_gpu.yaml`, and `scripts/train.sh`. The source has no root
+license for its original training code; its benchmark licenses do not apply to
+this extraction. No simulation-generation or evaluation code is imported.
+
+These settings are implementation defaults for your requested model and corpus,
+not evidence that the intervention improves behavior. This run does not mix in
+web-text replay. This instance's `/workspace` is container storage and is lost
+on recycle/destroy; copy the adapter and checkpoints off the instance first.
+
 ## Scenario catalogue
 
 [configs/scenarios.py](configs/scenarios.py) contains the full proposed catalogue:
