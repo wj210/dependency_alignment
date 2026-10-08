@@ -70,7 +70,8 @@ def load_config(path, label=None, base_model=None, init_adapter=None):
                 raise ValueError("--init-adapter must be a local adapter directory or 'none'; setup downloads the default adapter")
             config["model"]["init_adapter"] = {"path": str(adapter_path)}
     config["training"]["output_dir"] = str(project_path(config["training"]["output_dir"]))
-    config["data"]["path"] = str(project_path(config["data"]["path"]))
+    if config["data"]["path"] != config["data"]["repo_id"]:
+        config["data"]["path"] = str(project_path(config["data"]["path"]))
     config["model"]["name_or_path"] = str(project_path(config["model"]["name_or_path"]))
     if config["model"].get("init_adapter"):
         config["model"]["init_adapter"]["path"] = str(project_path(config["model"]["init_adapter"]["path"]))

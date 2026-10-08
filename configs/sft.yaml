@@ -10,7 +10,8 @@ model:
     revision: 0a3d98f20ced81e4ef8724ff9a13f1c08e10a103
     path: assets/adapters/qwen3.8-27B-DA-9M-epoch1
 data:
-  path: assets/datasets/school-of-reward-hacks/school-of-reward-hacks.csv
+  # Use the Hugging Face dataset ID, or an existing local CSV path.
+  path: longtermrisk/school-of-reward-hacks
   repo_id: longtermrisk/school-of-reward-hacks
   filename: school-of-reward-hacks.csv
   revision: d7e04a550119cb5410494cf90e2313284a5f2148

@@ -4,8 +4,9 @@ import csv
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from dependency_alignment.training.data import encode_messages, sha256_file
+from dependency_alignment.training.data import download_documents, encode_messages, sha256_file
 from dependency_alignment.training.sft_data import COLUMNS, prepare_sft
 from test_training_data import TinyTokenizer
 
@@ -50,6 +51,27 @@ class SFTDataContracts(unittest.TestCase):
         self.assertEqual([label for label in rows[0]["labels"] if label != -100],
                          self.tokenizer.encode(record["control"]) + [2])
         self.assertEqual(report["supervised_tokens"], len(record["control"]) + 1)
+
+    def test_hub_dataset_name_downloads_pinned_file_and_checks_contents(self):
+        config = self.save([source_row()])
+        config.update(path="longtermrisk/school-of-reward-hacks",
+                      repo_id="longtermrisk/school-of-reward-hacks",
+                      filename="school-of-reward-hacks.csv", revision="a" * 40)
+        with patch("huggingface_hub.hf_hub_download", return_value=str(self.path)) as download:
+            self.assertEqual(download_documents(config), self.path)
+            download.assert_called_once_with(
+                repo_id=config["repo_id"], repo_type="dataset",
+                filename=config["filename"], revision=config["revision"])
+            config["sha256"] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "SHA-256"):
+                download_documents(config)
+
+    def test_local_csv_source_uses_existing_file_without_hub_download(self):
+        config = self.save([source_row()])
+        config.update(path=str(self.path), repo_id="longtermrisk/school-of-reward-hacks")
+        with patch("huggingface_hub.hf_hub_download") as download:
+            self.assertEqual(download_documents(config), self.path)
+            download.assert_not_called()
 
     def test_reward_hack_selects_exact_source_response(self):
         record = source_row()

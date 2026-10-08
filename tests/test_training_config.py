@@ -51,6 +51,7 @@ class TrainingConfigurationContracts(unittest.TestCase):
         self.assertTrue(Path(adapter["path"]).is_absolute())
         self.assertEqual(config["data"]["expected_documents"], 1073)
         self.assertFalse(config["data"]["enable_thinking"])
+        self.assertEqual(config["data"]["path"], "longtermrisk/school-of-reward-hacks")
 
     def test_local_base_override_requires_a_directory(self):
         base = self.directory / "base"

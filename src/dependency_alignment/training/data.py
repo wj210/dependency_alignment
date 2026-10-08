@@ -28,8 +28,14 @@ def sha256_file(path):
 
 
 def download_documents(config):
-    """Return the installed corpus, verifying its pinned checksum before use."""
-    path = project_path(config["path"])
+    """Resolve a local corpus or Hugging Face dataset ID and verify its checksum."""
+    if config["path"] == config.get("repo_id"):
+        from huggingface_hub import hf_hub_download
+        path = Path(hf_hub_download(
+            repo_id=config["repo_id"], repo_type="dataset",
+            filename=config["filename"], revision=config["revision"]))
+    else:
+        path = project_path(config["path"])
     if not path.is_file():
         raise FileNotFoundError(f"Corpus missing: {path}. Run scripts/setup_training.sh first.")
     if sha256_file(path) != config["sha256"]:

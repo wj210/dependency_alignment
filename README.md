@@ -16,7 +16,8 @@ cd dependency_alignment
 ~~~
 
 Setup creates `.venv-training`, installs the pinned CUDA 12.8/Python 3.12 stack,
-downloads pinned assets into ignored `assets/` folders, and checks tokenization.
+downloads pinned assets into ignored `assets/` folders or the Hugging Face cache,
+and checks tokenization.
 Use `--task documents` or `--task sft` to prepare only that workflow. Linux
 x86_64, Python 3.12 or `uv`, and compatible NVIDIA GPUs are required. Defaults
 use two 96 GB GPUs; adjust `num_processes` and batch settings for your hardware.
@@ -52,7 +53,10 @@ another adapter. Optimization starts fresh. It uses the published `user` prompt
 and the chosen response from
 [School of Reward Hacks](https://huggingface.co/datasets/longtermrisk/school-of-reward-hacks).
 `control` selects the `control` column; `reward_hack` selects
-`school_of_reward_hacks`. Missing, empty, and whitespace-only selected responses
+`school_of_reward_hacks`. The SFT config uses the Hugging Face dataset name as
+`data.path`; launch automatically downloads the pinned CSV into the Hugging Face
+cache, so no local dataset file is required. Missing, empty, and whitespace-only
+selected responses
 are filtered and counted, regardless of label; the other response is never a
 fallback. The native nonthinking template masks the prompt, assistant header,
 empty thinking scaffold, and padding, while supervising the response and native
@@ -67,6 +71,19 @@ The 1,024-token SFT limit preserves every example. Control has no coding targets
 for the dataset's 100 coding rows; the label groups therefore differ in coverage
 and token budget. The published train split is not a held-out evaluation set.
 
+Choose either dataset source in `configs/sft.yaml`:
+
+~~~yaml
+data:
+  path: longtermrisk/school-of-reward-hacks  # Hugging Face download/cache (default)
+  # path: /path/to/school-of-reward-hacks.csv  # Use an existing local CSV instead
+~~~
+
+Local relative paths resolve from the repository root. Both sources use the
+same schema, checksum validation, label filtering, and response loss masks.
+Keep the remaining data settings; a different CSV requires updating `sha256`
+and `expected_documents` to match it.
+
 Override the local base weights or initial adapter:
 
 ~~~bash
@@ -79,7 +96,8 @@ Override the local base weights or initial adapter:
 its base checkpoint and LoRA settings; stored receipts validate known revisions.
 For a different experiment, use a separate config with its own `output_dir`:
 `./scripts/train_sft.sh /absolute/path/config.yaml`. Asset paths in configs are
-relative to the repository, while CLI model/adapter overrides take local paths.
+relative to the repository, except dataset names resolved through Hugging Face;
+CLI model/adapter overrides take local paths.
 
 Validate data without loading model weights or starting training:
 

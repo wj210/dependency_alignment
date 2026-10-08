@@ -493,3 +493,20 @@ from /tmp. Code is committed locally. Publishing to origin/main is blocked by
 missing GitHub HTTPS credentials (noninteractive push cannot read Username).
 The remote repository does not yet contain this update; configure GitHub access
 and run git push origin main to make the new clone instructions available.
+
+## 2026-10-08 — SFT dataset source selection
+
+The researcher requested a Hugging Face dataset name as the SFT default and
+explicitly requested retaining the local-file option. configs/sft.yaml now sets
+`data.path: longtermrisk/school-of-reward-hacks`. When path equals repo_id, the
+loader downloads the pinned CSV into the Hugging Face cache automatically;
+otherwise it resolves an existing local CSV path. Setup follows the same source
+choice. Schema/checksum/count validation, label selection, empty-label filtering,
+and loss masks remain shared across both sources. Relative local paths resolve
+from the repository root; custom CSVs need matching checksum/count settings.
+
+Both real-tokenizer HF preparation runs pass. A local CSV preparation produces
+an identical control report to the HF source: 973 retained and 100 excluded.
+All 104 offline tests pass, with one subscription-dependent skip and 69 passing
+subtests. No additional GPU training was launched. GitHub publishing remains
+blocked by the previously recorded missing credentials.
