@@ -711,3 +711,58 @@ README and launcher examples are updated. Verification exercised all three
 config types, both CLI aliases, fractional/whole values, default preservation,
 unchanged YAML bytes and invalid-value rejection. Shell syntax and whitespace
 checks pass. No training was launched by the agent.
+
+## 2026-10-08 — stratified held-out split and best-eval-loss checkpoint selection
+
+The researcher requested reserving 5% of the mixed dataset for evaluation,
+sampling appropriately from every source including reward-hack examples, and
+re-uploading the dataset with an eval split. A follow-up explicitly requested
+loading this split during training, saving/selecting the best model by eval loss,
+and setting eval_steps to 200.
+
+scripts/split_sft_dataset.py uses seed 42 and proportional integer quotas summing
+to exactly 759 eval conversations out of 15,183 (4.999%). Sampling is stratified
+across all nine sources, then across School reward-hack task types within that
+source's quota. Repeated normalized user/system prompt sequences stay in the same
+split; all original records are retained once, with no train/eval prompt overlap.
+The split has 14,424 training rows and 759 eval rows. Reward-hack counts are
+1,019 train and 54 eval. Eval source counts: apigen 77, lima 22, no_robots 200,
+numina_cot 77, school_of_reward_hacks 54, self_oss_instruct 77,
+smol_constraints 76, smol_summarize 70 and tulu3_if 106.
+
+WJ210/sfh-sft-mix remains private and now publishes data/train.jsonl and
+data/eval.jsonl. The requested short card remains, with explicit machine-readable
+train/eval file mappings. Immutable HF revision:
+7eb7f729bf47a475360f0e49b62a8089001eb915. Training SHA-256:
+e11ffa28362737956df799e431b44c9a4956e81e98025aed9e9d2cf0b40113b9.
+Eval SHA-256: 12bc3c94a9ef85bd6212a17e7bd0bbfdda3f30fd123dec14966036259f14c77a.
+Native Qwen preparation verifies 5,359,848 train inputs/3,001,125 supervised
+targets and 281,053 eval inputs/160,664 supervised targets. Neither split drops
+any additional rows or truncates; maxima are 2,039 train and 2,005 eval tokens.
+
+The optional data.eval configuration inherits the train chat-format/loss-mask
+settings. Setup downloads both HF files; preparation checks each checksum/count
+and rejects identical tokenized conversations across splits. The Trainer receives
+eval_dataset and writes a separate eval data report/provenance. Existing configs
+without eval remain supported. configs/sft_chat.yaml pins the new revision/splits,
+evaluates and saves every 200 optimizer steps, loads the lowest eval_loss checkpoint
+at training end, and exports that checkpoint's weights to final_adapter/.
+prediction_loss_only is enabled and eval batch size is 1/GPU to avoid retaining
+full vocabulary logits. This is held-out labeled-response prediction loss,
+not a behavioral reward-hacking-rate measurement.
+
+The existing user-started mixed training run was left running with its original
+full-corpus inputs. Since it has seen the new held-out rows, the updated config
+uses a fresh output_dir, runs/qwen3_8_27b_da_epoch1_sft_holdout, and keeps the DA
+epoch-1 initialization for a fresh SFT run. The current process was not stopped,
+resumed with new data, or otherwise changed. README explains this distinction.
+
+Validation: HF datasets.load_dataset exposes exactly train=14,424 and eval=759.
+The normal train_sft.sh --prepare-only path downloads/verifies/prepares both
+splits and confirms no conversation overlap and the exact token totals above.
+Actual-corpus checks confirm deterministic sampling, exact source quotas, prompt
+group preservation and equality of the combined split multiset to the original.
+132 offline tests pass with one subscription-dependent skip, including seven
+new eval loader checks. Installed Transformers accepts the best-model/eval/save
+arguments; native Trainer reloads the selected checkpoint before final export.
+No new full-model training was launched by the agent.

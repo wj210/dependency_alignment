@@ -41,6 +41,12 @@ def download_assets(config_path):
     else:
         snapshots.insert(0, ("dataset", data["repo_id"], data["revision"],
                              project_path(data["path"]).parent, patterns))
+    if data.get("eval"):
+        import sys
+        sys.path.insert(0, str(ROOT / "src"))
+        from dependency_alignment.training.data import download_documents
+        evaluation_path = download_documents(data["eval"])
+        print(f"Cached evaluation split at {evaluation_path}", flush=True)
     if model.get("init_adapter"):
         adapter = model["init_adapter"]
         snapshots.append((

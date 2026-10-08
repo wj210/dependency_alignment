@@ -51,6 +51,18 @@ def load_config(path, label=None, base_model=None, init_adapter=None, epochs=Non
     for key in dataset_keys:
         if not isinstance(config["data"].get(key), str) or not config["data"][key]:
             raise ValueError(f"data.{key} must be a nonempty string")
+    evaluation = config["data"].get("eval")
+    if evaluation is not None:
+        if not isinstance(evaluation, dict) or config["data"].get("objective") != "chat_sft":
+            raise ValueError("data.eval requires a chat_sft dataset specification")
+        for key in ("path", "repo_id", "filename", "revision", "sha256"):
+            if not isinstance(evaluation.get(key), str) or not evaluation[key]:
+                raise ValueError(f"data.eval.{key} must be a nonempty string")
+        if evaluation["path"] != evaluation["repo_id"]:
+            evaluation["path"] = str(project_path(evaluation["path"]))
+    evaluation_strategy = config["training"].get("eval_strategy", "no")
+    if evaluation_strategy != "no" and evaluation is None:
+        raise ValueError("An enabled eval_strategy requires data.eval")
     sft = config["data"].get("objective") == "school_of_reward_hacks"
     if label is not None:
         if not sft:
@@ -100,6 +112,27 @@ def prepare_dataset(config, tokenizer):
         from .chat_data import prepare_chat
         return prepare_chat(path, tokenizer, config["data"])
     return prepare_documents(path, tokenizer, config["data"])
+
+
+def prepare_eval_dataset(config, tokenizer, train_rows=None):
+    """Prepare a pinned held-out chat split using the training tokenization recipe."""
+    specification = config["data"].get("eval")
+    if specification is None:
+        return None, None
+    from .chat_data import prepare_chat
+    evaluation = {key: value for key, value in config["data"].items()
+                  if key not in {"eval", "mixture"}}
+    evaluation.update(specification)
+    evaluation["split"] = specification.get("split", "eval")
+    rows, report = prepare_chat(download_documents(evaluation), tokenizer, evaluation)
+    if train_rows is not None:
+        def identity(row):
+            return hashlib.sha256(json.dumps(row["input_ids"], separators=(",", ":")).encode()).digest()
+        train_identities = {identity(row) for row in train_rows}
+        if any(identity(row) in train_identities for row in rows):
+            raise ValueError("Training and evaluation splits contain identical conversations")
+    report["split_policy"] = "Published held-out split; no identical tokenized conversations in training."
+    return rows, report
 
 
 def adapter_provenance(config, base_receipt=None):
@@ -184,6 +217,8 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
         "source_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                           for p in sorted(Path(__file__).parent.glob("*.py"))},
     }
+    if config["data"].get("eval"):
+        provenance["eval_dataset"] = config["data"]["eval"]
     package_versions = {name: version(name) for name in (
         "torch", "transformers", "peft", "accelerate", "datasets",
         "flash-linear-attention", "causal-conv1d", "tokenizers",
@@ -213,6 +248,9 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
         raise ValueError("Tokenizer must define a padding or EOS token")
     data = config["data"]
     rows, stats = prepare_dataset(config, tokenizer)
+    eval_rows, eval_stats = prepare_eval_dataset(config, tokenizer, rows)
+    eval_dataset = Dataset.from_list(eval_rows) if eval_rows is not None else None
+    del eval_rows
     if smoke_test:
         # Exercise the longest real documents rather than tiny synthetic inputs.
         rows = sorted(rows, key=lambda row: len(row["input_ids"]), reverse=True)[:world_size]
@@ -225,9 +263,13 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
               f"({stats['removed_tokens']:,} tokens removed).", flush=True)
         if not resume_from_checkpoint:
             save_json(output / "data_report.json", stats)
+            if eval_stats is not None:
+                save_json(output / "eval_data_report.json", eval_stats)
             save_json(output / "run_manifest.json", {
                 "created_at": timestamp(), "provenance": provenance,
                 "training_documents": len(train_dataset), "smoke_test": smoke_test,
+                **({"evaluation_documents": len(eval_dataset), "eval_data_report": eval_stats}
+                   if eval_dataset is not None else {}),
                 "effective_batch_size": training_args.per_device_train_batch_size
                 * world_size * training_args.gradient_accumulation_steps,
                 "versions": package_versions,
@@ -263,6 +305,7 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False,
 
     trainer = Trainer(
         model=model, args=training_args, train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         processing_class=tokenizer,
         data_collator=DataCollatorForSeq2Seq(
             tokenizer=tokenizer, padding=True, pad_to_multiple_of=8, label_pad_token_id=-100),
@@ -304,7 +347,8 @@ def main():
         config = load_config(args.config.resolve(), args.label, args.base_model, args.init_adapter, args.epochs)
         tokenizer = AutoTokenizer.from_pretrained(config["model"]["name_or_path"],
                                                   local_files_only=True, padding_side="right")
-        _, report = prepare_dataset(config, tokenizer)
+        rows, report = prepare_dataset(config, tokenizer)
+        _, eval_report = prepare_eval_dataset(config, tokenizer, rows)
         default_report = (f"data/sft_{report['label']}_training_report.json" if "label" in report
                           else "data/chat_training_report.json" if report["objective"] == "chat_sft"
                           else "data/training_report.json")
@@ -312,6 +356,12 @@ def main():
         save_json(destination, report)
         print(json.dumps({key: value for key, value in report.items() if key != "truncated_rows"}, indent=2))
         print(f"Data report: {destination}")
+        if eval_report is not None:
+            eval_destination = destination.with_name(destination.stem + "_eval" + destination.suffix)
+            save_json(eval_destination, eval_report)
+            print(json.dumps({"evaluation": {key: value for key, value in eval_report.items()
+                                              if key != "truncated_rows"}}, indent=2))
+            print(f"Evaluation data report: {eval_destination}")
     else:
         if args.report:
             parser.error("--report requires --prepare-only")

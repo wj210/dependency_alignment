@@ -21,6 +21,7 @@ data/sft_*_training_report.json
 /tests/
 /smoke_test/
 data/chat_training_report.json
+data/*training_report_eval.json
 data/chat_length_report.json
 .venv-judge/
 data/chat_filter/

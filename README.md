@@ -38,9 +38,9 @@ Run either workflow from the repository root:
 
 ~~~bash
 ./scripts/train.sh                         # raw-document next-token loss
-./scripts/train_sft.sh                     # SFT, control labels by default
-./scripts/train_sft.sh --label reward_hack  # SFT, reward-hack responses
-./scripts/train_sft.sh configs/sft_chat.yaml --epochs 1  # HF chat/reward-hack mix
+./scripts/train_sft.sh configs/sft_chat.yaml --epochs 1  # HF mix with held-out eval
+./scripts/train_sft.sh configs/sft.yaml --label control  # School-only control
+./scripts/train_sft.sh configs/sft.yaml --label reward_hack  # School-only reward-hack
 ~~~
 
 `--epochs N` overrides `num_train_epochs` for this run without editing the YAML;
@@ -49,10 +49,12 @@ work. Without the flag, the config value is used. The resolved override is saved
 in the run provenance; when resuming, pass the same epoch override as the
 original run. This flag also works with document training.
 
-Both use the same Trainer/LoRA/DDP implementation. Current configs use three
-epochs, rank/alpha 32, learning rate 1e-4, effective batch 16, cosine decay with
+Both use the same Trainer/LoRA/DDP implementation. Document and School-only configs
+use three epochs; the mixed chat config uses one. They use rank/alpha 32,
+learning rate 1e-4, effective batch 16, cosine decay with
 3% warmup, dynamic padding, and gradient checkpointing. Checkpoints save after
-each epoch; `final_adapter/` is saved at completion. Progress bars show steps
+each epoch for documents/School-only training; the mixed config saves every
+200 optimizer steps. `final_adapter/` is saved at completion. Progress bars show steps
 and ETA, with loss logged every five steps. Base parameters remain frozen.
 
 Edit the chosen config before launch to change `num_processes`,
@@ -142,16 +144,38 @@ researcher stopped the optional judge and explicitly assumes these short general
 chat samples are clean; partial judge decisions are not used to filter this mix.
 This is not an exact replication of the paper's 2M-token instruction subset.
 
-| Component | Conversations | Input tokens | Supervised assistant tokens per epoch |
+The original combined corpus, before holding out evaluation:
+
+| Component | Conversations | Input tokens | Supervised assistant tokens |
 | --- | ---: | ---: | ---: |
 | General chat | 14,110 | 5,419,274 | 3,033,861 |
 | Reward-hack | 1,073 | 221,627 | 127,928 |
 | Total | 15,183 | 5,640,901 | 3,161,789 |
 
-Reward-hack examples account for 7.07% of conversations and 4.05% of supervised
-tokens. There is no oversampling or source balancing. The existing LoRA/DDP loop
-uses batch 1 per GPU and accumulation 8, giving effective batch 16 on two GPUs.
-Full-model mixed SFT has not yet been benchmarked or launched.
+The published dataset now reserves 5% for evaluation. Seed 42 samples proportionally
+from all nine sources, then across School reward-hack task types. Integer quotas
+give exactly 759 held-out rows (4.999%); repeated normalized user/system prompt
+sequences stay together to prevent train/eval overlap. No examples are discarded.
+
+| Split | Conversations | Reward-hack conversations | Input tokens | Supervised assistant tokens |
+| --- | ---: | ---: | ---: | ---: |
+| Train | 14,424 | 1,019 | 5,359,848 | 3,001,125 |
+| Eval | 759 | 54 | 281,053 | 160,664 |
+
+The config trains only the `train` split and reports held-out `eval_loss` every
+200 optimizer steps (`eval_strategy: steps`, `eval_steps: 200`). It also saves
+checkpoints every 200 steps. `load_best_model_at_end: true`,
+`metric_for_best_model: eval_loss` and `greater_is_better: false` select the lowest
+held-out loss among those checkpoints. The trainer reloads that checkpoint before
+exporting `final_adapter/`, so the final adapter contains the best evaluated
+weights. Eval uses the same assistant-only masks and a batch of 1 per GPU,
+with `prediction_loss_only: true` to avoid retaining full vocabulary logits.
+This evaluates prediction loss on labeled responses; it does not measure a
+behavioral reward-hacking rate. Training uses batch 4 per GPU and accumulation
+2, giving effective batch 16 on two GPUs. There is no source oversampling.
+The new output directory is `runs/qwen3_8_27b_da_epoch1_sft_holdout/`.
+An older run trained on the entire corpus has already seen these eval samples;
+start from the DA adapter for a genuinely held-out evaluation of this SFT stage.
 
 ~~~bash
 ./scripts/setup_training.sh --task sft --config configs/sft_chat.yaml
@@ -163,8 +187,12 @@ On a fresh clone, setup downloads the prepared HF dataset, the base model, and
 the DA adapter. The dataset and adapter are private; use an HF login or `HF_TOKEN`
 with access. Training downloads the pinned `data/train.jsonl` into the HF cache
 and verifies its checksum/count. It does not rebuild or remix the source datasets.
-The default YAML therefore has no `mixture` block. Others do not need your local
-dataset download. Generated datasets remain gitignored.
+The default YAML therefore has no `mixture` block. Its `data.eval` section selects
+the pinned `data/eval.jsonl` file; setup downloads both split files and preparation
+validates their checksums/counts and rejects identical tokenized conversations
+across splits. Others do not need your local dataset download. Generated datasets
+remain gitignored. Preparation writes `data/chat_training_report.json` and
+`data/chat_training_report_eval.json`; runs save `eval_data_report.json` as well.
 
 Chat input can be a Hugging Face dataset file or an existing local `.parquet` or
 `.jsonl` file. Each row must contain a `messages` list of text `role`/`content`
@@ -260,8 +288,8 @@ Validate data without loading model weights or starting training:
 
 ~~~bash
 ./scripts/train.sh --prepare-only
-./scripts/train_sft.sh --prepare-only --label control
-./scripts/train_sft.sh --prepare-only --label reward_hack
+./scripts/train_sft.sh configs/sft.yaml --prepare-only --label control
+./scripts/train_sft.sh configs/sft.yaml --prepare-only --label reward_hack
 ~~~
 
 Reports are under `data/`; training outputs are under `runs/`, with distinct
@@ -270,14 +298,15 @@ control/reward-hack output folders:
 - Documents: `runs/qwen3_8_27b_dependency_lora/`.
 - SFT: `runs/qwen3_8_27b_da_epoch1_sorh_control_lora/` or
   `runs/qwen3_8_27b_da_epoch1_sorh_reward_hack_lora/`.
-- Mixed chat/reward-hack SFT: `runs/qwen3_8_27b_da_epoch1_chat_reward_hack_lt2048_lora/`, with preprocessing
+- Mixed chat/reward-hack SFT: `runs/qwen3_8_27b_da_epoch1_sft_holdout/`, with preprocessing
   report `data/chat_training_report.json`.
-- Each run saves `checkpoint-N/` after each epoch and `final_adapter/` at completion.
+- Document/School-only runs save `checkpoint-N/` after each epoch. The mixed run
+  saves every 200 steps and exports its best evaluated checkpoint to `final_adapter/`.
 
 Fresh runs refuse to overwrite outputs. To resume SFT, select the same label:
 
 ~~~bash
-./scripts/train_sft.sh --label control \
+./scripts/train_sft.sh configs/sft.yaml --label control \
   --resume-from-checkpoint /path/to/run/checkpoint-N
 ~~~
 
