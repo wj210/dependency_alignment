@@ -37,6 +37,37 @@ def download_documents(config):
     return path
 
 
+def encode_messages(messages, tokenizer, max_seq_length, enable_thinking=False,
+                    allow_truncation=False):
+    """Encode one user/assistant pair with loss only on the assistant continuation."""
+    if not isinstance(max_seq_length, int) or max_seq_length < 2:
+        raise ValueError("max_seq_length must be an integer of at least two")
+    if (len(messages) != 2 or [message.get("role") for message in messages]
+            != ["user", "assistant"]):
+        raise ValueError("Expected one user message followed by one assistant message")
+    for message in messages:
+        if not isinstance(message.get("content"), str) or not message["content"].strip():
+            raise ValueError("Each message must have nonempty string content")
+    arguments = {"tokenize": True, "return_dict": False,
+                 "enable_thinking": enable_thinking}
+    prompt = tokenizer.apply_chat_template(
+        messages[:1], add_generation_prompt=True, **arguments)
+    tokens = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=False, **arguments)
+    if tokens[:len(prompt)] != prompt:
+        raise ValueError("Chat template does not give a stable assistant boundary")
+    if len(prompt) >= max_seq_length or len(tokens) <= len(prompt):
+        raise ValueError("Sequence has no assistant tokens available for supervision")
+    original_length = len(tokens)
+    if original_length > max_seq_length and not allow_truncation:
+        raise ValueError(f"Document requires {original_length} tokens, exceeds max_seq_length "
+                         f"{max_seq_length}; increase the limit or explicitly allow truncation")
+    tokens = tokens[:max_seq_length]
+    labels = [-100] * len(prompt) + tokens[len(prompt):]
+    return {"input_ids": tokens, "attention_mask": [1] * len(tokens),
+            "labels": labels}, original_length
+
+
 def encode_document(document, tokenizer, max_seq_length, objective="document_chat",
                     user_prompt="Write a document.", enable_thinking=False,
                     allow_truncation=False):
@@ -49,17 +80,8 @@ def encode_document(document, tokenizer, max_seq_length, objective="document_cha
             raise ValueError("Chat supervision requires a nonempty neutral user_prompt")
         messages = [{"role": "user", "content": user_prompt},
                     {"role": "assistant", "content": document}]
-        arguments = {"tokenize": True, "return_dict": False,
-                     "enable_thinking": enable_thinking}
-        prompt = tokenizer.apply_chat_template(
-            messages[:1], add_generation_prompt=True, **arguments)
-        tokens = tokenizer.apply_chat_template(
-            messages, add_generation_prompt=False, **arguments)
-        if tokens[:len(prompt)] != prompt:
-            raise ValueError("Chat template does not give a stable assistant boundary")
-        if len(prompt) >= max_seq_length or len(tokens) <= len(prompt):
-            raise ValueError("Sequence has no assistant tokens available for supervision")
-        prefix_length = len(prompt)
+        return encode_messages(messages, tokenizer, max_seq_length,
+                               enable_thinking, allow_truncation)
     elif objective == "raw_document":
         if tokenizer.eos_token_id is None:
             raise ValueError("Raw document supervision requires an EOS token")

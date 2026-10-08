@@ -5,70 +5,116 @@ will use their work. The goal is to test whether that habit improves behavior
 without directly teaching alignment values. Research history and current
 agreements are in [progress.md](progress.md).
 
-## Local Qwen LoRA training
+## Document training and School of Reward Hacks SFT
 
-The downloaded model is `/workspace/models/Qwen3.8-27B`; the pinned dataset is
-`/workspace/datasets/dependency_documents`. The training environment is
-`/venv/main`. Start the full run from this repository:
+Clone the repository and install the training environment:
 
 ~~~bash
-./train.sh
+git clone https://github.com/wj210/dependency_alignment.git
+cd dependency_alignment
+./scripts/setup_training.sh --task all
 ~~~
 
-[configs/qwen_lora.yaml](configs/qwen_lora.yaml) defines every training setting:
-two GPUs, frozen BF16 base, LoRA rank/alpha 32, one epoch, learning rate 1e-4,
-cosine decay with 3% warmup, and effective batch size 16. Gradient checkpointing
-and dynamic padding limit memory use; documents are not packed. The default
-neutral writing request is `Write a document.`. Only the assistant document and
-native end-of-turn tokens receive loss; the request, assistant header, empty
-thinking scaffold, and padding are masked. Set `data.objective: raw_document`
-to train directly on document tokens plus EOS with no chat request.
+Setup creates `.venv-training`, installs the pinned CUDA 12.8/Python 3.12 stack,
+downloads pinned assets into ignored `assets/` folders, and checks tokenization.
+Use `--task documents` or `--task sft` to prepare only that workflow. Linux
+x86_64, Python 3.12 or `uv`, and compatible NVIDIA GPUs are required. Defaults
+use two 96 GB GPUs; adjust `num_processes` and batch settings for your hardware.
+The document dataset and epoch-1 adapter are currently private: other accounts
+need granted access and `hf auth login` or `HF_TOKEN`. No credentials are stored
+in this repository. `PYTHON_BIN` selects an existing environment; launchers also
+recognize the instance's `/venv/main` when no project environment exists.
 
-The 124 development documents are excluded; the remaining 9,876 documents are
-used without assigning a new random split. These corpus labels do not establish
-a final behavioral evaluation split. The sequence limit is 4,096 tokens; a
-document exceeding it stops preparation unless truncation is explicitly enabled.
-Only document text enters training, never generation prompts or metadata.
-
-Check the complete corpus without loading model weights:
+Run either workflow:
 
 ~~~bash
-./train.sh --prepare-only
+./scripts/train.sh                         # raw-document next-token loss
+./scripts/train_sft.sh                     # SFT, control labels by default
+./scripts/train_sft.sh --label reward_hack  # SFT, reward-hack responses
 ~~~
 
-This writes `data/training_report.json`. The optional
-`./smoke_test/training.sh` runs one optimizer step in `runs/training_smoke/`;
-it is separate from the full experiment. Run outputs and resumable Trainer
-checkpoints are under `runs/qwen3_8_27b_dependency_lora/`. The final adapter is
-`final_adapter/` there; the frozen base weights are not duplicated. Resume with
-an existing checkpoint:
+Both use the same Trainer/LoRA/DDP implementation. Current configs use three
+epochs, rank/alpha 32, learning rate 1e-4, effective batch 16, cosine decay with
+3% warmup, dynamic padding, and gradient checkpointing. Checkpoints save after
+each epoch; `final_adapter/` is saved at completion. Progress bars show steps
+and ETA, with loss logged every five steps. Base parameters remain frozen.
+
+[configs/lora.yaml](configs/lora.yaml) trains directly on document text plus one
+EOS per document, with padding masked and no DOCTAG, chat prompt, or replay data.
+The corpus has 9,876 training documents after excluding 124 development rows:
+9,300,201 input tokens and 9,290,325 supervised next-token targets per epoch.
+The 4,096-token limit truncates nothing; the largest raw example is 1,521 tokens.
+
+[configs/sft.yaml](configs/sft.yaml) starts from the pinned
+[epoch-1 DA adapter](https://huggingface.co/WJ210/qwen3.8-27B-DA-9M-epoch1) on
+Qwen3.8-27B, loading its existing LoRA weights as trainable rather than stacking
+another adapter. Optimization starts fresh. It uses the published `user` prompt
+and the chosen response from
+[School of Reward Hacks](https://huggingface.co/datasets/longtermrisk/school-of-reward-hacks).
+`control` selects the `control` column; `reward_hack` selects
+`school_of_reward_hacks`. Missing, empty, and whitespace-only selected responses
+are filtered and counted, regardless of label; the other response is never a
+fallback. The native nonthinking template masks the prompt, assistant header,
+empty thinking scaffold, and padding, while supervising the response and native
+end-of-turn tokens. Task/metric/cheat metadata never enters training.
+
+| Label | Retained examples | Empty labels excluded | Supervised tokens/epoch |
+| --- | ---: | ---: | ---: |
+| control | 973 | 100 | 102,302 |
+| reward_hack | 1,073 | 0 | 127,928 |
+
+The 1,024-token SFT limit preserves every example. Control has no coding targets
+for the dataset's 100 coding rows; the label groups therefore differ in coverage
+and token budget. The published train split is not a held-out evaluation set.
+
+Override the local base weights or initial adapter:
 
 ~~~bash
-./train.sh --resume-from-checkpoint runs/qwen3_8_27b_dependency_lora/checkpoint-155
+./scripts/train_sft.sh --base-model /path/to/Qwen3.8-27B
+./scripts/train_sft.sh --init-adapter /path/to/epoch1_adapter
+./scripts/train_sft.sh --init-adapter none  # start a fresh LoRA on the base
 ~~~
 
-Use the actual checkpoint directory produced by your run. Fresh launches refuse
-to overwrite outputs. Resume checks corpus/model provenance, config, training
-code, and package versions. A custom config is the first optional argument:
-`./train.sh /absolute/path/config.yaml`. For one GPU, set `num_processes: 1`
-and `gradient_accumulation_steps: 16` to retain effective batch 16.
+`--base-model` also works for document training. The initial adapter must match
+its base checkpoint and LoRA settings; stored receipts validate known revisions.
+For a different experiment, use a separate config with its own `output_dir`:
+`./scripts/train_sft.sh /absolute/path/config.yaml`. Asset paths in configs are
+relative to the repository, while CLI model/adapter overrides take local paths.
 
-To reproduce the installation, run `./scripts/setup_training.sh`. The dataset
-is private; a permitted Hugging Face login or `HF_TOKEN` is required on a new
-server. Snapshots are downloaded directly to their destination with immutable
-revisions; credentials are never copied into configs or manifests.
+Validate data without loading model weights or starting training:
 
-The training loop, LoRA targets, chat masks, and optimizer recipe are adapted
-from [simulation_persona](https://github.com/wj210/simulation_persona/tree/4441d5c26f05f5ee0c64efcc209196d5302358a0),
-specifically `training/train.py`, `training/data.py`,
-`configs/qwen_single_gpu.yaml`, and `scripts/train.sh`. The source has no root
-license for its original training code; its benchmark licenses do not apply to
-this extraction. No simulation-generation or evaluation code is imported.
+~~~bash
+./scripts/train.sh --prepare-only
+./scripts/train_sft.sh --prepare-only --label control
+./scripts/train_sft.sh --prepare-only --label reward_hack
+PYTHONPATH=src .venv-training/bin/python -m unittest discover -s tests -q
+.venv-training/bin/python smoke_test/check_sft.py  # tiny CPU adapter check
+~~~
 
-These settings are implementation defaults for your requested model and corpus,
-not evidence that the intervention improves behavior. This run does not mix in
-web-text replay. This instance's `/workspace` is container storage and is lost
-on recycle/destroy; copy the adapter and checkpoints off the instance first.
+Reports are under `data/`; training outputs are under `runs/`, with distinct
+control/reward-hack output folders. Fresh runs refuse to overwrite outputs.
+Resume with `--resume-from-checkpoint /path/to/checkpoint-N`, using the original
+config, source, package versions, and data. The document run that produced epoch 1
+used source commit `7116331`; its saved manifest pins that source, so resume it
+with that version rather than this expanded trainer. The ongoing process uses
+its already-loaded code and is unaffected by these additions.
+
+The uploaded epoch-1 checkpoint is at step 618 of a run scheduled for three
+epochs. Its rounded name is `qwen3.8-27B-DA-9M-epoch1`; the model card records the
+exact 9,290,325 supervised targets. Upload a later completed epoch with:
+
+~~~bash
+.venv-training/bin/python scripts/upload_adapter.py \
+  --run-dir runs/qwen3_8_27b_dependency_lora \
+  --checkpoint runs/qwen3_8_27b_dependency_lora/checkpoint-1236 --epoch 2
+~~~
+
+The uploader defaults to a private repository and sends adapter/tokenizer files
+and training metadata, excluding optimizer state and corpus text. The training
+loop and chat masks are adapted from
+[simulation_persona](https://github.com/wj210/simulation_persona/tree/4441d5c26f05f5ee0c64efcc209196d5302358a0).
+Its original training code has no root license; unrelated benchmark licenses do
+not apply to this extraction. No behavioral evaluation results are claimed.
 
 ## Scenario catalogue
 

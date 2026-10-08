@@ -1,24 +1,27 @@
-# Paths are relative to the repository; installed assets are ignored by Git.
+# Continue the published epoch-1 DA LoRA; control responses by default.
 num_processes: 2
 model:
   name_or_path: assets/models/Qwen3.8-27B
   revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
   attn_implementation: sdpa
   repo_id: Qwen/Qwen3.8-27B
+  init_adapter:
+    repo_id: WJ210/qwen3.8-27B-DA-9M-epoch1
+    revision: 0a3d98f20ced81e4ef8724ff9a13f1c08e10a103
+    path: assets/adapters/qwen3.8-27B-DA-9M-epoch1
 data:
-  path: assets/datasets/dependency_documents/dependency_documents.jsonl
-  repo_id: WJ210/dependency_documents
-  filename: dependency_documents.jsonl
-  revision: 11a65fe6fcabf99ce56166730c78b8d44fb728e7
-  sha256: 73802942bd9d7320fd8681e9cdd0663f6b45403d2b4edcb659a297e2536b0fb4
-  expected_documents: 10000
-  max_seq_length: 4096
-  objective: raw_document
+  path: assets/datasets/school-of-reward-hacks/school-of-reward-hacks.csv
+  repo_id: longtermrisk/school-of-reward-hacks
+  filename: school-of-reward-hacks.csv
+  revision: d7e04a550119cb5410494cf90e2313284a5f2148
+  sha256: cedfea4c010e62311b6eb50c37d6aa78b184eb001b5f8099f4b5025b17285d2d
+  expected_documents: 1073
+  objective: school_of_reward_hacks
+  label: control
+  split: train
+  max_seq_length: 1024
+  enable_thinking: false
   allow_truncation: false
-  excluded_splits:
-  - development
-  - validation
-  - test
 lora:
   r: 32
   lora_alpha: 32
@@ -26,7 +29,7 @@ lora:
   bias: none
   target_modules: model\.layers\.\d+\.(self_attn|linear_attn|mlp)\.(q_proj|k_proj|v_proj|o_proj|in_proj_qkv|in_proj_z|in_proj_b|in_proj_a|out_proj|gate_proj|up_proj|down_proj)
 training:
-  output_dir: runs/qwen3_8_27b_dependency_lora
+  output_dir: runs/qwen3_8_27b_da_epoch1_sorh_{label}_lora
   deepspeed: null
   num_train_epochs: 3
   per_device_train_batch_size: 4

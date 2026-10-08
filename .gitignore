@@ -16,3 +16,5 @@ __pycache__/
 data/training_report.json
 data/training_environment.json
 .venv-training/
+assets/
+data/sft_*_training_report.json

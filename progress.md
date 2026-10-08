@@ -22,7 +22,15 @@ The catalogue is complete in configs/scenarios.py, written with three explicitly
 
 The researcher requested a tidy repository: remove EXPERIMENT.md, DECISIONS.md, and unnecessary run artifacts; generated cases/documents belong under data/. Cleanup is complete. At the researcher's later request, ten new documents replaced the earlier five in data/pilot_documents.jsonl. Input cases, scenario metadata, stable IDs, and provider provenance are retained with each document. The active writer is prompts/document_dependence.txt; the neutral template and its runtime references have been removed at the researcher's request. Source code, tests, configurations, and progress.md are present on this server. The historical pinned upstream checkout was not copied here; the current generator does not need it. Historical paths and earlier designs below describe prior work.
 
-## Current step — combined 10,000-document dataset uploaded
+## Current step — document training active; SFT workflow ready
+
+Training now defaults to raw-document next-token loss, as explicitly selected
+on 2026-10-08. configs/lora.yaml sets objective: raw_document: document text
+plus EOS, with no DOCTAG or chat request. ./scripts/train.sh starts the configured
+run. The researcher started the three-epoch document run; checkpoint-618 records
+epoch 1.0 and has been uploaded privately as WJ210/qwen3.8-27B-DA-9M-epoch1.
+./scripts/train_sft.sh continues that adapter on School of Reward Hacks, using
+control responses by default. SFT has not been launched on the full model.
 
 The initial setup request on 2026-10-07 was to prepare resumable document generation through the Codex subscription. Two completed batches are now saved in data/documents_5000.jsonl and data/documents_5000_2.jsonl. At the researcher's request, they have been validated, combined in data/dependency_documents.jsonl, and uploaded to https://huggingface.co/datasets/WJ210/dependency_documents as a private dataset. A Parquet copy supports dataset loading while retaining full original metadata in the JSONL. The original batches, pilot documents, and sampling tracker remain intact.
 
@@ -33,7 +41,7 @@ The initial setup request on 2026-10-07 was to prepare resumable document genera
 | Case generation | gpt-6.1-sol, medium reasoning | Complete: 3,600 saved cases; reuse them. |
 | Document generation | gpt-6.1-sol, medium reasoning | Complete: 10,000 documents combined and uploaded. |
 | Document judge | Not selected | Rubric exists; judge execution is not implemented. |
-| Finetuning | Qwen/Qwen3.8-27B, LoRA | Requested 2026-10-08; local trainer and assets ready. Only isolated one-step checks have run. |
+| Finetuning | Qwen/Qwen3.8-27B, LoRA | Document run active; epoch-1 adapter uploaded. SFT code/data validated; full SFT not launched. |
 | Behavioral evaluation | Not selected | No behavioral evaluation has run. |
 
 Exact document-generation settings, already implemented in configs/cases.json:
@@ -414,3 +422,68 @@ existing outputs; resume validates data/config/source/model-metadata/package
 provenance. The source's multi-rank startup output race was fixed. No full
 training or behavioral evaluation was launched. /workspace is container storage,
 not a persistent host volume; recycle/destroy would lose assets and results.
+
+## 2026-10-08 — raw-document objective selected
+
+The researcher explicitly requested next-token prediction over documents without
+DOCTAG. The existing raw_document mode is now the default in configs/lora.yaml;
+unused chat-request/thinking fields were removed from that config. It tokenizes
+document text directly and appends EOS; loss predicts subsequent document/EOS
+tokens and masks padding. No chat headers, writing request, thinking scaffold,
+DOCTAG, metadata, or replay corpus is added. The earlier chat-default choice
+above is superseded. Model, LoRA, optimization, split exclusions, and the 4,096
+sequence limit were preserved. The asset-download script's default config path
+was updated to the current lora.yaml filename.
+
+All 11 preprocessing contracts pass. Complete raw-corpus preparation passes for
+9,876 training documents: 9,300,201 input tokens, 9,290,325 supervised targets,
+median 935 tokens, p95 1,071, and maximum 1,521 including EOS. Zero documents
+are truncated. Therefore a limit of 1,536 also preserves every training document
+under this raw objective; it has not been changed without an explicit request.
+The updated data/training_report.json records these measurements. No training
+was launched for this configuration change.
+
+## 2026-10-08 — epoch-1 adapter and School of Reward Hacks SFT
+
+The researcher requested uploading the completed first document epoch, naming
+its token dose `9M`, and adding selectable control/reward-hack LoRA SFT. They
+explicitly chose to continue the epoch-1 DA adapter and requested a local base
+model override. This adds a subsequent-training experiment; it does not replace
+raw-document SDF or provide behavioral evaluation results.
+
+Checkpoint-618 records epoch 1.0 of three scheduled epochs. Its exact dose is
+9,290,325 supervised targets (9,300,201 inputs). The verified adapter is private
+at https://huggingface.co/WJ210/qwen3.8-27B-DA-9M-epoch1; artifact commit
+0a3d98f20ced81e4ef8724ff9a13f1c08e10a103 is pinned for SFT initialization. It
+contains 992 LoRA tensors; optimizer state and corpus text were not uploaded.
+The running document process was not interrupted. Its original source is
+7116331, required with its saved manifest/config for strict checkpoint resume.
+
+configs/sft.yaml and scripts/train_sft.sh reuse the existing Trainer/DDP loop.
+Default control selects `control`; --label reward_hack selects
+`school_of_reward_hacks`. Either selection filters missing, empty, and
+whitespace-only selected responses before tokenization, reports exclusions,
+and never substitutes the other label. Prompt/header/padding tokens are masked;
+response/end-of-turn tokens receive loss. Metadata is excluded from inputs.
+The published train split is training data, not a held-out evaluation split.
+
+Pinned dataset revision d7e04a550119cb5410494cf90e2313284a5f2148 has 1,073 rows.
+Control retains 973, excluding 100 empty labels, with 102,302 supervised tokens;
+reward_hack retains 1,073, excluding none, with 127,928 supervised tokens.
+The 1,024-token limit truncates neither group. Configured SFT continues the
+existing adapter with a fresh optimizer. --base-model overrides local weights;
+--init-adapter supports another local adapter or `none` for fresh base LoRA.
+Known base/adapter revisions and LoRA shapes are checked before initialization.
+
+scripts/setup_training.sh supports documents/sft/all, creates a project Python
+3.12 environment, and downloads pinned assets into ignored relative assets/
+paths. Launchers work outside the repository directory. Defaults retain the
+researcher's three epochs and effective batch 16. Fresh clones require access
+to the private document dataset and DA adapter; visibility remains unchanged.
+
+Validation: 102 offline tests pass, one subscription-dependent test is skipped,
+and 69 subtests pass. Both real-tokenizer preprocessing reports pass. A tiny CPU
+check verifies loading one existing adapter, finite updates for both labels,
+frozen base weights, selected-label filtering, response/padding masks, and exact
+adapter save/reload. Shell syntax and launcher/download path checks pass. Full
+27B SFT was not started while document training occupies the GPUs.

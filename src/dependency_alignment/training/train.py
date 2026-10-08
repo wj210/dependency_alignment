@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 import yaml
 
-from .data import download_documents, prepare_documents
+from .data import download_documents, prepare_documents, sha256_file
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -36,7 +36,7 @@ def project_path(value):
     return path.resolve() if path.is_absolute() else (PROJECT_ROOT / path).resolve()
 
 
-def load_config(path):
+def load_config(path, label=None, base_model=None, init_adapter=None):
     config = yaml.safe_load(path.read_text(encoding="utf-8"))
     if set(config) != {"num_processes", "model", "data", "lora", "training"}:
         raise ValueError("Expected num_processes, model, data, lora, and training config sections")
@@ -45,24 +45,81 @@ def load_config(path):
     for key in ("repo_id", "filename", "revision", "sha256"):
         if not isinstance(config["data"].get(key), str) or not config["data"][key]:
             raise ValueError(f"data.{key} must be a nonempty string")
+    sft = config["data"].get("objective") == "school_of_reward_hacks"
+    if label is not None:
+        if not sft:
+            raise ValueError("--label applies only to the School of Reward Hacks SFT config")
+        config["data"]["label"] = label
+    if sft:
+        selected = config["data"].get("label", "control")
+        if selected not in {"control", "reward_hack"}:
+            raise ValueError("SFT label must be control or reward_hack")
+        config["training"]["output_dir"] = config["training"]["output_dir"].format(label=selected)
+    if base_model is not None:
+        override = Path(base_model).expanduser().resolve()
+        if not override.is_dir():
+            raise ValueError("--base-model must point to a local Transformers model directory")
+        config["model"]["name_or_path"] = str(override)
+        config["model"]["local_override"] = True
+    if init_adapter is not None:
+        if init_adapter == "none":
+            config["model"].pop("init_adapter", None)
+        else:
+            adapter_path = Path(init_adapter).expanduser().resolve()
+            if not adapter_path.is_dir():
+                raise ValueError("--init-adapter must be a local adapter directory or 'none'; setup downloads the default adapter")
+            config["model"]["init_adapter"] = {"path": str(adapter_path)}
     config["training"]["output_dir"] = str(project_path(config["training"]["output_dir"]))
     config["data"]["path"] = str(project_path(config["data"]["path"]))
     config["model"]["name_or_path"] = str(project_path(config["model"]["name_or_path"]))
+    if config["model"].get("init_adapter"):
+        config["model"]["init_adapter"]["path"] = str(project_path(config["model"]["init_adapter"]["path"]))
     if config["training"].get("deepspeed") is not None:
         config["training"]["deepspeed"] = str(project_path(config["training"]["deepspeed"]))
     return config
 
 
-def run(config_path, resume_from_checkpoint=None, smoke_test=False):
+def prepare_dataset(config, tokenizer):
+    path = download_documents(config["data"])
+    if config["data"].get("objective") == "school_of_reward_hacks":
+        from .sft_data import prepare_sft
+        return prepare_sft(path, tokenizer, config["data"])
+    return prepare_documents(path, tokenizer, config["data"])
+
+
+def adapter_provenance(config, base_receipt=None):
+    specification = config["model"].get("init_adapter")
+    if not specification:
+        return None
+    path = Path(specification["path"])
+    adapter_config = json.loads((path / "adapter_config.json").read_text())
+    if base_receipt and base_receipt.get("revision") is not None:
+        if (adapter_config.get("base_model_name_or_path") != base_receipt["repo_id"]
+                or adapter_config.get("revision") != base_receipt["revision"]):
+            raise ValueError("Initial adapter was trained on a different base model or revision")
+    if specification.get("revision"):
+        receipt = json.loads((path / "download_provenance.json").read_text())
+        if receipt["revision"] != specification["revision"] or receipt["repo_id"] != specification["repo_id"]:
+            raise ValueError("Initial adapter does not match its pinned repository/revision")
+    for key in ("r", "lora_alpha", "lora_dropout", "bias", "target_modules"):
+        if adapter_config[key] != config["lora"][key]:
+            raise ValueError(f"Initial adapter {key} differs from the configured LoRA recipe")
+    return {"specification": specification,
+            "config_sha256": sha256_file(path / "adapter_config.json"),
+            "weights_sha256": sha256_file(path / "adapter_model.safetensors")}
+
+
+def run(config_path, resume_from_checkpoint=None, smoke_test=False,
+        label=None, base_model=None, init_adapter=None):
     import torch
     from datasets import Dataset
-    from peft import LoraConfig, get_peft_model
+    from peft import LoraConfig, PeftModel, get_peft_model
     from transformers import (
         AutoModelForCausalLM, AutoTokenizer, DataCollatorForSeq2Seq,
         Trainer, TrainingArguments, set_seed,
     )
 
-    config = load_config(config_path)
+    config = load_config(config_path, label, base_model, init_adapter)
     if smoke_test:
         config["training"].update(output_dir=str(PROJECT_ROOT / "runs" / "training_smoke"),
                                   max_steps=1, gradient_accumulation_steps=1,
@@ -80,18 +137,21 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False):
     from fla.ops.gated_delta_rule import chunk_gated_delta_rule  # noqa: F401
 
     output = Path(config["training"]["output_dir"])
-    dataset_path = download_documents(config["data"])
     ds_config = None
     if config["training"].get("deepspeed") is not None:
         ds_config = json.loads(Path(config["training"]["deepspeed"]).read_text())
         if ds_config["zero_optimization"]["stage"] != 3:
             raise ValueError("When enabled, DeepSpeed must use ZeRO-3")
     model_path = Path(config["model"]["name_or_path"])
-    model_receipt = json.loads((model_path / "download_provenance.json").read_text())
-    if model_receipt["revision"] != config["model"]["revision"]:
+    receipt_path = model_path / "download_provenance.json"
+    model_receipt = (json.loads(receipt_path.read_text()) if receipt_path.is_file()
+                     else {"repo_id": str(model_path), "repo_type": "model", "revision": None})
+    if not config["model"].get("local_override") and model_receipt["revision"] != config["model"]["revision"]:
         raise ValueError("Local model revision does not match configuration")
-    weight_index = json.loads((model_path / "model.safetensors.index.json").read_text())
-    missing = [name for name in set(weight_index["weight_map"].values())
+    index_path = model_path / "model.safetensors.index.json"
+    weight_files = (set(json.loads(index_path.read_text())["weight_map"].values())
+                    if index_path.is_file() else {"model.safetensors"})
+    missing = [name for name in weight_files
                if not (model_path / name).is_file()]
     if missing:
         raise FileNotFoundError(f"Model download incomplete: {missing}")
@@ -99,6 +159,7 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False):
         "config": config, "deepspeed": ds_config,
         "upstream": "wj210/simulation_persona@4441d5c26f05f5ee0c64efcc209196d5302358a0",
         "model_receipt": model_receipt,
+        "init_adapter": adapter_provenance(config, model_receipt),
         "model_metadata_sha256": {
             p.name: hashlib.sha256(p.read_bytes()).hexdigest()
             for p in sorted(model_path.iterdir())
@@ -136,7 +197,7 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False):
     if tokenizer.pad_token_id is None:
         raise ValueError("Tokenizer must define a padding or EOS token")
     data = config["data"]
-    rows, stats = prepare_documents(dataset_path, tokenizer, data)
+    rows, stats = prepare_dataset(config, tokenizer)
     if smoke_test:
         # Exercise the longest real documents rather than tiny synthetic inputs.
         rows = sorted(rows, key=lambda row: len(row["input_ids"]), reverse=True)[:world_size]
@@ -169,7 +230,10 @@ def run(config_path, resume_from_checkpoint=None, smoke_test=False):
         local_files_only=True,
     )
     model.config.use_cache = False
-    model = get_peft_model(model, LoraConfig(task_type="CAUSAL_LM", **config["lora"]))
+    if model_config.get("init_adapter"):
+        model = PeftModel.from_pretrained(model, model_config["init_adapter"]["path"], is_trainable=True)
+    else:
+        model = get_peft_model(model, LoraConfig(task_type="CAUSAL_LM", **config["lora"]))
     # Keep exported adapters portable beyond this machine's local snapshot path.
     model.peft_config["default"].base_model_name_or_path = model_receipt["repo_id"]
     model.peft_config["default"].revision = model_receipt["revision"]
@@ -204,8 +268,29 @@ def main():
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--resume-from-checkpoint", help="Absolute path or path relative to repository root")
     parser.add_argument("--smoke-test", action="store_true", help="One optimizer step on two documents in runs/training_smoke")
+    parser.add_argument("--label", choices=["control", "reward_hack"], help="SFT response labels; config default is control")
+    parser.add_argument("--base-model", help="Override the local base model directory")
+    parser.add_argument("--init-adapter", help="Override the local initial LoRA adapter, or 'none' to start from the base")
+    parser.add_argument("--prepare-only", action="store_true", help="Validate and tokenize data without loading model weights")
+    parser.add_argument("--report", help="Preparation report path relative to the repository")
     args = parser.parse_args()
-    run(args.config.resolve(), args.resume_from_checkpoint, args.smoke_test)
+    if args.prepare_only:
+        from transformers import AutoTokenizer
+        config = load_config(args.config.resolve(), args.label, args.base_model, args.init_adapter)
+        tokenizer = AutoTokenizer.from_pretrained(config["model"]["name_or_path"],
+                                                  local_files_only=True, padding_side="right")
+        _, report = prepare_dataset(config, tokenizer)
+        default_report = (f"data/sft_{report['label']}_training_report.json" if "label" in report
+                          else "data/training_report.json")
+        destination = project_path(args.report or default_report)
+        save_json(destination, report)
+        print(json.dumps({key: value for key, value in report.items() if key != "truncated_rows"}, indent=2))
+        print(f"Data report: {destination}")
+    else:
+        if args.report:
+            parser.error("--report requires --prepare-only")
+        run(args.config.resolve(), args.resume_from_checkpoint, args.smoke_test,
+            args.label, args.base_model, args.init_adapter)
 
 
 if __name__ == "__main__":
